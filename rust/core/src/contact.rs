@@ -175,6 +175,8 @@ pub struct SkinVert {
     /// Area-weighted vertex normal at rest (zero when no triangle uses it).
     pub n: Vec3,
     pub inf: Vec<(usize, f64)>,
+    /// Which mesh primitive it came from (in file order over skinned nodes).
+    pub prim: usize,
 }
 
 /// Rest positions of every skinned vertex (through the inverse bind
@@ -187,6 +189,7 @@ pub fn skinned_rest(doc: &Document, rig: &Rig) -> Result<Vec<SkinVert>, String> 
 pub fn skinned_mesh(doc: &Document, rig: &Rig) -> Result<(Vec<SkinVert>, Vec<[usize; 3]>), String> {
     let mut out = Vec::new();
     let mut tris_out: Vec<[usize; 3]> = Vec::new();
+    let mut prim_no = 0usize;
     for node in doc.array("nodes") {
         let (Some(mesh), Some(skin)) = (
             node.get("mesh").and_then(Json::as_usize),
@@ -236,6 +239,8 @@ pub fn skinned_mesh(doc: &Document, rig: &Rig) -> Result<(Vec<SkinVert>, Vec<[us
                 doc.read_accessor(wa)?,
             );
             let base = out.len();
+            let this_prim = prim_no;
+            prim_no += 1;
             let count = pos.len().min(jr.len()).min(wr.len());
             for v in 0..count {
                 let p = Vec3::new(pos[v][0], pos[v][1], pos[v][2]);
@@ -260,6 +265,7 @@ pub fn skinned_mesh(doc: &Document, rig: &Rig) -> Result<(Vec<SkinVert>, Vec<[us
                     },
                     n: Vec3::ZERO,
                     inf,
+                    prim: this_prim,
                 });
             }
             // Normals from the triangles (mode 4 or unset only).
@@ -297,6 +303,61 @@ pub fn skinned_mesh(doc: &Document, rig: &Rig) -> Result<(Vec<SkinVert>, Vec<[us
         }
     }
     Ok((out, tris_out))
+}
+
+/// Which primitives are clothing worn over another: a primitive whose surface
+/// encloses most of another primitive's torso vertices (a coat over the base
+/// body it was cut for). A character made as one fused mesh has none.
+pub fn clothing(
+    verts: &[SkinVert],
+    tris: &[[usize; 3]],
+    torso: &dyn Fn(usize) -> bool,
+) -> Vec<bool> {
+    let n = verts.iter().map(|v| v.prim + 1).max().unwrap_or(0);
+    let pos: Vec<Vec3> = verts.iter().map(|v| v.p).collect();
+    let mut out = vec![false; n];
+    if n < 2 {
+        return out;
+    }
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    for v in verts {
+        lo = lo.min(v.p.y);
+        hi = hi.max(v.p.y);
+    }
+    let cell = (hi - lo).max(1e-6) / 10.0;
+    for g in 0..n {
+        let gt: Vec<[usize; 3]> = tris
+            .iter()
+            .copied()
+            .filter(|t| verts[t[0]].prim == g)
+            .collect();
+        if gt.len() < 50 {
+            continue;
+        }
+        let cl = Clusters::new(&pos, &gt, cell);
+        let cd = cluster_data(&pos, &gt, &cl);
+        for o in (0..n).filter(|&o| o != g) {
+            let inner: Vec<usize> = (0..verts.len())
+                .filter(|&v| verts[v].prim == o && torso(v))
+                .collect();
+            if inner.len() < 20 {
+                continue;
+            }
+            let step = (inner.len() / 300).max(1);
+            let (mut inside, mut all) = (0usize, 0usize);
+            for &v in inner.iter().step_by(step) {
+                all += 1;
+                if fast_winding(&pos, &gt, &cd, pos[v]).abs() >= 0.5 {
+                    inside += 1;
+                }
+            }
+            if inside * 2 > all {
+                out[g] = true;
+            }
+        }
+    }
+    out
 }
 
 fn dominant(v: &SkinVert) -> usize {
@@ -383,6 +444,30 @@ impl Body {
         let dom: Vec<usize> = verts
             .iter()
             .map(|v| owner[dominant(v).min(owner.len() - 1)])
+            .collect();
+        // Clothing worn over the body (a coat cut from the base body under it) is
+        // cloth: it gives way and may overlap itself, so the proxies, the surface
+        // points and the exact check are fitted to the skin under it. Fitting
+        // them to Maeva's coat pushed her wrists the whole 12 % cap in every clip
+        // (arms held out wide) to clear her own sleeves from her coat.
+        let torso_bones: Vec<usize> = [
+            "DEF-spine",
+            "DEF-spine.001",
+            "DEF-spine.002",
+            "DEF-spine.003",
+        ]
+        .iter()
+        .filter_map(|n| map.node_of(n))
+        .collect();
+        let cloth = clothing(&verts, &tris, &|v| torso_bones.contains(&dom[v]));
+        let skin: Vec<bool> = verts
+            .iter()
+            .map(|v| !cloth.get(v.prim).copied().unwrap_or(false))
+            .collect();
+        let dom: Vec<usize> = dom
+            .iter()
+            .zip(&skin)
+            .map(|(&d, &s)| if s { d } else { usize::MAX })
             .collect();
         let head_of = |n: &str| map.node_of(n).map(|i| rig.head(i));
         let to_local = |bone: usize, p: Vec3| {
@@ -2285,6 +2370,53 @@ mod tests {
             Vec3::new(1.0, 2.0, 0.0),
         );
         assert!((d - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_shell_round_the_body_is_clothing() {
+        // a small box (the body, prim 0) inside a larger one (a coat, prim 1)
+        let mut verts = Vec::new();
+        let mut tris = Vec::new();
+        for (prim, size) in [(0usize, 1.0), (1usize, 1.6)] {
+            let base = verts.len();
+            for z in [-size, size] {
+                for (x, y) in [(-size, -size), (size, -size), (size, size), (-size, size)] {
+                    verts.push(SkinVert {
+                        p: Vec3::new(x, y, z),
+                        n: Vec3::ZERO,
+                        inf: vec![(0, 1.0)],
+                        prim,
+                    });
+                }
+            }
+            // a finer inner sample so the body has torso vertices to test
+            for i in 0..30 {
+                let t = i as f64 / 29.0 * 2.0 - 1.0;
+                verts.push(SkinVert {
+                    p: Vec3::new(t * size * 0.9, 0.0, size * 0.95),
+                    n: Vec3::ZERO,
+                    inf: vec![(0, 1.0)],
+                    prim,
+                });
+            }
+            let quads = [
+                [0, 3, 2, 1],
+                [4, 5, 6, 7],
+                [0, 1, 5, 4],
+                [1, 2, 6, 5],
+                [2, 3, 7, 6],
+                [3, 0, 4, 7],
+            ];
+            // enough triangles to count as a surface: repeat the box's faces
+            for _ in 0..5 {
+                for q in quads {
+                    tris.push([base + q[0], base + q[1], base + q[2]]);
+                    tris.push([base + q[0], base + q[2], base + q[3]]);
+                }
+            }
+        }
+        let cloth = clothing(&verts, &tris, &|_| true);
+        assert_eq!(cloth, vec![false, true]);
     }
 
     #[test]
