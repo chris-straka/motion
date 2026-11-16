@@ -299,6 +299,17 @@ fn long_finger_base(finger: &str, seg: usize) -> Option<String> {
     }
 }
 
+/// Generic single-finger / mitten segment number (`Finger1_R`, `finger.02.L`,
+/// `HandFinger3_L`, `Mitten1_R`), used only when a hand has a single multi-bone
+/// finger chain and no named five-finger bones.
+fn single_finger_seg(base: &str) -> Option<usize> {
+    let word_end = base.find(|c: char| c.is_ascii_digit())?;
+    let (word, digits) = base.split_at(word_end);
+    let seg: usize = digits.parse().ok()?;
+    let word = word.strip_prefix("hand").unwrap_or(word);
+    matches!(word, "finger" | "fingers" | "mitten" | "mitt").then_some(seg)
+}
+
 fn is_spine_word(base: &str) -> bool {
     base.starts_with("spine")
         || base.starts_with("chest")
@@ -392,6 +403,73 @@ pub fn map_rig(rig: &Rig) -> Mapping {
     let find = |assigned: &Vec<(usize, String)>, name: &str| {
         assigned.iter().find(|(_, c)| c == name).map(|(n, _)| *n)
     };
+    // 2b. Unified single-finger / mitten chain (`Finger1..3_L/R` and variants):
+    // when a hand has no named index/middle/ring/pinky bones and a single
+    // 2+-bone generic finger chain hangs from the hand, map it onto
+    // `DEF-f_middle.01..03` so `standardize` keeps its weights, `socket` places
+    // a palm socket, and `animate` / `attack` curl it. Sibling 1-bone stubs
+    // (`Hand -> Finger1` + `Hand -> Finger2`) and 5-finger `Bip01 Finger0..4`
+    // hands have multiple roots or length 1, so they are left alone.
+    for (side, suffix) in [(Side::L, "L"), (Side::R, "R")] {
+        let Some(hand) = find(&assigned, &format!("DEF-hand.{suffix}")) else {
+            continue;
+        };
+        let has_named = ["f_index", "f_middle", "f_ring", "f_pinky"]
+            .iter()
+            .any(|f| find(&assigned, &format!("DEF-{f}.01.{suffix}")).is_some());
+        if has_named {
+            continue;
+        }
+        let is_generic = |node: usize| -> bool {
+            if !joints.contains(&node) || assigned.iter().any(|(n, _)| *n == node) {
+                return false;
+            }
+            let (b, s) = split_side(&rig.names[node]);
+            s == Some(side) && single_finger_seg(&squash(&b)).is_some()
+        };
+        let roots: Vec<usize> = rig.children[hand]
+            .iter()
+            .copied()
+            .filter(|&c| is_generic(c))
+            .collect();
+        if roots.len() != 1 {
+            continue;
+        }
+        let mut chain = vec![roots[0]];
+        while chain.len() < 4 {
+            let cur = *chain.last().unwrap();
+            let next: Vec<usize> = rig.children[cur]
+                .iter()
+                .copied()
+                .filter(|&c| is_generic(c))
+                .collect();
+            if next.len() != 1 {
+                break;
+            }
+            chain.push(next[0]);
+        }
+        if chain.len() < 2 {
+            continue;
+        }
+        if chain.len() == 4 && !rig.children[chain[3]].is_empty() {
+            take(chain[0], format!("DEF-palm.02.{suffix}"), &mut assigned);
+            for (seg, &node) in chain[1..4].iter().enumerate() {
+                take(
+                    node,
+                    format!("DEF-f_middle.{:02}.{suffix}", seg + 1),
+                    &mut assigned,
+                );
+            }
+        } else {
+            for (seg, &node) in chain.iter().take(3).enumerate() {
+                take(
+                    node,
+                    format!("DEF-f_middle.{:02}.{suffix}", seg + 1),
+                    &mut assigned,
+                );
+            }
+        }
+    }
     if find(&assigned, "DEF-spine").is_none() {
         if let Some(thigh) = find(&assigned, "DEF-thigh.L") {
             if let Some(p) = rig.parent[thigh].filter(|p| joints.contains(p)) {
@@ -676,5 +754,63 @@ mod tests {
             Some("DEF-spine.001".into())
         );
         assert_eq!(present_parent("DEF-spine", &have), None);
+    }
+
+    #[test]
+    fn single_unified_finger_chain_maps_onto_middle_and_stubs_do_not() {
+        // Unified 3-bone chains in common naming styles (`Finger1..3_L/R`,
+        // `Mitten1..3_L`, `HandFinger.01..03.R`) + optional thumb.
+        let unified = [
+            "Hand_L",
+            "Finger1_L",
+            "Finger2_L",
+            "Finger3_L",
+            "Hand_R",
+            "Thumb1_R",
+            "Thumb2_R",
+            "Thumb3_R",
+            "Mitten_01_R",
+            "Mitten_02_R",
+            "Mitten_03_R",
+        ];
+        let parents = [
+            None,
+            Some(0),
+            Some(1),
+            Some(2),
+            None,
+            Some(4),
+            Some(5),
+            Some(6),
+            Some(4),
+            Some(8),
+            Some(9),
+        ];
+        let map = map_rig(&rig_of(&unified, &parents));
+        assert_eq!(map.canonical_of(1), Some("DEF-f_middle.01.L"));
+        assert_eq!(map.canonical_of(2), Some("DEF-f_middle.02.L"));
+        assert_eq!(map.canonical_of(3), Some("DEF-f_middle.03.L"));
+        assert_eq!(map.canonical_of(5), Some("DEF-thumb.01.R"));
+        assert_eq!(map.canonical_of(8), Some("DEF-f_middle.01.R"));
+        assert_eq!(map.canonical_of(9), Some("DEF-f_middle.02.R"));
+        assert_eq!(map.canonical_of(10), Some("DEF-f_middle.03.R"));
+
+        // Sibling 1-bone stubs under the hand (`Hand -> Finger1` + `Hand -> Finger2`)
+        // and 5-finger `Bip01 Finger0..4` hands must NOT collapse onto `f_middle`.
+        let stubs = ["Hand_L", "Finger1_L", "Finger2_L"];
+        let map = map_rig(&rig_of(&stubs, &[None, Some(0), Some(0)]));
+        assert_eq!(map.canonical_of(1), None);
+        assert_eq!(map.canonical_of(2), None);
+
+        let biped = [
+            "Bip01 L Hand",
+            "Bip01 L Finger0",
+            "Bip01 L Finger01",
+            "Bip01 L Finger1",
+            "Bip01 L Finger11",
+        ];
+        let map = map_rig(&rig_of(&biped, &[None, Some(0), Some(1), Some(0), Some(3)]));
+        assert_eq!(map.canonical_of(1), None);
+        assert_eq!(map.canonical_of(3), None);
     }
 }
