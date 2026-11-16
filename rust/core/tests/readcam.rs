@@ -4,11 +4,12 @@
 use motion_core::contact::Options;
 use motion_core::fixture::{humanoid, Naming};
 use motion_core::glb::Document;
+use motion_core::math::Quat as MQuat;
 use motion_core::math::{Quat, Vec3};
 use motion_core::motioncheck::{strike_timing, Subject};
 use motion_core::readcam::{
-    follow_offsets, grip_frame, grip_of, path_arc, score_of, CamOptions, Camera, Mask, Stage,
-    READ_FULL,
+    follow_offsets, grip_frame, grip_of, joint_turn_deg, path_arc, score_of, CamOptions, Camera,
+    Mask, Stage, READ_FULL,
 };
 use motion_core::rig::Trs;
 use motion_core::standardize::{standardize, Outcome};
@@ -214,10 +215,22 @@ fn the_grip_reads_a_closed_hand_and_an_open_one() {
         Vec3::new(0.2, 0.0, 0.0),
         Vec3::new(0.3, 0.0, 0.0),
     ]];
-    let (handle, axis, curl, _) = grip_frame(palm, palm, dir, &open);
+    let (handle, axis, _) = grip_frame(palm, palm, dir, &open);
     assert!(handle.abs() < 1e-12 && axis.abs() < 1e-12);
-    assert_eq!(curl, Some(0.0));
-    assert_eq!(grip_of(handle, curl), 0.0, "an open hand holds nothing");
+    // A finger joint that never turned from rest: no curl, however
+    // curved the rig's rest hand is.
+    let turn = joint_turn_deg(
+        MQuat::IDENTITY,
+        MQuat::IDENTITY,
+        MQuat::IDENTITY,
+        MQuat::IDENTITY,
+    );
+    assert_eq!(turn, 0.0);
+    assert_eq!(
+        grip_of(handle, Some(turn)),
+        0.0,
+        "an open hand holds nothing"
+    );
     // The same finger bent 90 deg at each joint.
     let closed = vec![vec![
         Vec3::new(0.0, 0.0, 0.0),
@@ -225,12 +238,18 @@ fn the_grip_reads_a_closed_hand_and_an_open_one() {
         Vec3::new(0.1, 0.1, 0.0),
         Vec3::new(0.2, 0.1, 0.0),
     ]];
-    let (_, _, curl, tip) = grip_frame(palm, palm, dir, &closed);
-    assert!((curl.unwrap() - 90.0).abs() < 1e-9, "{curl:?}");
+    let (_, _, tip) = grip_frame(palm, palm, dir, &closed);
     // The tip ends one segment (0.2 m here) past the handle's line:
     // the extrapolated end joint lands at (0.3, 0.1, 0).
     assert!((tip - 0.2).abs() < 1e-9, "{tip}");
-    assert_eq!(grip_of(0.0, curl), 1.0);
+    // A joint turned 90 deg from rest against its parent.
+    let bent = MQuat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), std::f64::consts::FRAC_PI_2);
+    let turn = joint_turn_deg(MQuat::IDENTITY, MQuat::IDENTITY, MQuat::IDENTITY, bent);
+    assert!((turn - 90.0).abs() < 1e-9, "{turn}");
+    // The parent turning with it is not the joint's own turn.
+    let carried = joint_turn_deg(MQuat::IDENTITY, MQuat::IDENTITY, bent, bent);
+    assert!(carried.abs() < 1e-9, "{carried}");
+    assert_eq!(grip_of(0.0, Some(turn)), 1.0);
     // A socket floating 12 cm off the palm fails however curled.
     assert_eq!(grip_of(0.12, Some(90.0)), 0.0);
     // No measurable fingers: the handle alone is judged.

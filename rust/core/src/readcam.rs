@@ -555,7 +555,8 @@ pub struct GripScore {
     pub handle_m: f64,
     /// Palm to the handle's line, median over the strike.
     pub axis_m: f64,
-    /// Mean finger bend, degrees (0 for a straight open hand).
+    /// Mean finger turn from the rest pose, degrees (0 for a hand
+    /// the clip never closes).
     pub curl_deg: f64,
     /// Fingertips to the handle's line, median over the strike.
     pub tip_m: f64,
@@ -586,9 +587,9 @@ impl Default for GripScore {
 /// a little down the fingers), so the good bound sits just past it.
 pub const GRIP_HANDLE_GOOD_M: f64 = 0.045;
 pub const GRIP_HANDLE_BAD_M: f64 = 0.115;
-/// Mean finger bend of a closed grip, degrees: a fist bends each joint
-/// roughly 30-60 deg (`attack::grip`'s fist table); an open hand is
-/// near 0, a relaxed hand about half a fist.
+/// Mean finger turn of a closed grip, degrees: a fist turns each
+/// joint roughly 30-60 deg from rest (`attack::grip`'s fist table);
+/// a hand the clip never closes turns 0.
 pub const GRIP_CURL_FULL_DEG: f64 = 35.0;
 
 /// The grip's score from the handle's distance to the palm and the
@@ -605,47 +606,65 @@ pub fn grip_of(handle_m: f64, curl_deg: Option<f64>) -> f64 {
 }
 
 /// One frame's grip measures: the handle's distance to the palm, the
-/// palm's distance to the handle's line, the fingers' mean bend in
-/// degrees (`None` when no chain bends measurably) and the fingertips'
-/// distance to the handle's line. `palm` is the mean finger root (or
-/// the hand joint); `grip` the handle's middle; `dir` the blade's
-/// direction; `chains` are finger joint positions, hand first.
-pub fn grip_frame(
-    palm: Vec3,
-    grip: Vec3,
-    dir: Vec3,
-    chains: &[Vec<Vec3>],
-) -> (f64, f64, Option<f64>, f64) {
+/// palm's distance to the handle's line and the fingertips' distance
+/// to the handle's line. `palm` is the mean finger root (or the hand
+/// joint); `grip` the handle's middle; `dir` the blade's direction;
+/// `chains` are finger joint positions, hand first.
+pub fn grip_frame(palm: Vec3, grip: Vec3, dir: Vec3, chains: &[Vec<Vec3>]) -> (f64, f64, f64) {
     let handle = (grip - palm).length();
     let along = (palm - grip).dot(dir);
     let axis = ((palm - grip) - dir.scale(along)).length();
-    let mut bends = Vec::new();
     let mut tips = Vec::new();
     for ch in chains {
-        for w in ch.windows(3) {
-            let (a, b) = (w[1] - w[0], w[2] - w[1]);
-            if a.length() > 1e-9 && b.length() > 1e-9 {
-                let c = (a.dot(b) / (a.length() * b.length())).clamp(-1.0, 1.0);
-                bends.push(detmath::acos(c).to_degrees());
-            }
-        }
         if ch.len() >= 2 {
             let tip = ch[ch.len() - 1] + (ch[ch.len() - 1] - ch[ch.len() - 2]);
             let t = (tip - grip).dot(dir);
             tips.push(((tip - grip) - dir.scale(t)).length());
         }
     }
-    let curl = if bends.is_empty() {
-        None
-    } else {
-        Some(bends.iter().sum::<f64>() / bends.len() as f64)
-    };
     let tip = if tips.is_empty() {
         0.0
     } else {
         tips.iter().sum::<f64>() / tips.len() as f64
     };
-    (handle, axis, curl, tip)
+    (handle, axis, tip)
+}
+
+/// A finger joint's turn from its rest pose, degrees: its rotation
+/// relative to its parent now, against the same at rest. Joint
+/// positions cannot say this (a rig may rest with curved fingers --
+/// Lysan's rest hand already bends 44 deg joint to joint, so an open
+/// authored hand and a closed one read the same by position), the
+/// joint's own turn can: a hand the clip never closes turns 0.
+pub fn joint_turn_deg(
+    rest_parent: Quat,
+    rest_node: Quat,
+    posed_parent: Quat,
+    posed_node: Quat,
+) -> f64 {
+    let rest = rest_parent.conj().mul(rest_node);
+    let posed = posed_parent.conj().mul(posed_node);
+    rest.angle_to(posed).to_degrees()
+}
+
+/// The weapon hand's mean finger turn from rest over one posed frame
+/// (degrees, `None` when no chain has a joint to turn): every finger
+/// joint of every chain, hand first in each chain.
+pub fn finger_turn_deg(rig: &Rig, world: &[Affine], chains: &[Vec<usize>]) -> Option<f64> {
+    let mut sum = 0.0;
+    let mut count = 0usize;
+    for ch in chains {
+        for w in ch.windows(2) {
+            sum += joint_turn_deg(
+                rig.rest_world[w[0]].rotation(),
+                rig.rest_world[w[1]].rotation(),
+                world[w[0]].rotation(),
+                world[w[1]].rotation(),
+            );
+            count += 1;
+        }
+    }
+    (count > 0).then(|| sum / count as f64)
 }
 
 fn median(v: &[f64]) -> f64 {
@@ -1170,10 +1189,10 @@ impl Stage {
                     .iter()
                     .map(|ch| ch.iter().map(|&nd| world[f][nd].t).collect())
                     .collect();
-                let (handle, axis, curl, tip_d) = grip_frame(palm, grip, dir, &chains);
+                let (handle, axis, tip_d) = grip_frame(palm, grip, dir, &chains);
                 handles.push(handle / self.unit);
                 axes.push(axis / self.unit);
-                if let Some(c) = curl {
+                if let Some(c) = finger_turn_deg(rig, &world[f], &self.finger_chains) {
                     curls.push(c);
                 }
                 tips.push(tip_d / self.unit);
