@@ -191,3 +191,85 @@ fn overlap_puts_the_hips_ahead_and_the_sword_behind_landing_together() {
     assert!((params[s].body.turn - k[2].body.turn).abs() < 1e-12);
     assert!((params[s].grip - k[2].grip).length() < 1e-12);
 }
+
+#[test]
+fn single_finger_chain_places_palm_socket_and_curls_round_the_handle() {
+    use motion_core::fixture::humanoid_mitten;
+    use motion_core::rig::{Animation, Rig};
+    // Twisted A-pose single-finger rig: local +X is randomized on every bone,
+    // so curling must follow the hand's world palm axis, not local +X.
+    let raw = humanoid_mitten(Naming::Plain, true, 75.0).unwrap();
+    let (std_doc, _) = match standardize(&raw, "humanoid").unwrap() {
+        Outcome::Done(d, r) => (Document::parse(&d.to_bytes().unwrap()).unwrap(), r),
+        Outcome::Refused(_, why) => panic!("{why}"),
+    };
+    let spec = parse_spec(EASY).unwrap();
+    let (built, rep) = build(&std_doc, &spec, None).unwrap();
+    assert!(rep.socket_rewritten);
+    for (k, m) in rep.key_miss.iter().enumerate() {
+        assert!(m.grip < 1e-9, "key {k}: {m:?}");
+    }
+    let rig = Rig::from_doc(&built).unwrap();
+    let anim = &Animation::load_all(&built).unwrap()[0];
+    let w = rig.world(&anim.sample(&rig, 0.4));
+    let hand = rig.find("DEF-hand.R").unwrap();
+    let f1 = rig.find("DEF-f_middle.01.R").unwrap();
+    let f2 = rig.find("DEF-f_middle.02.R").unwrap();
+    let f3 = rig.find("DEF-f_middle.03.R").unwrap();
+    // Every segment turned substantially from rest, and the fingertip curled
+    // toward the socket (the palm side), not away from it.
+    for (p, c) in [(hand, f1), (f1, f2), (f2, f3)] {
+        let turn = motion_core::readcam::joint_turn_deg(
+            rig.rest_world[p].rotation(),
+            rig.rest_world[c].rotation(),
+            w[p].rotation(),
+            w[c].rotation(),
+        );
+        assert!(
+            turn > 30.0,
+            "segment {} turned only {turn} deg",
+            rig.names[c]
+        );
+    }
+    let sock = rig.find("Socket_Hand_R").unwrap();
+    let rest_tip_to_sock = (rig.head(f3) - rig.rest_world[sock].t).length();
+    let posed_tip_to_sock = (w[f3].t - w[sock].t).length();
+    assert!(
+        posed_tip_to_sock < rest_tip_to_sock,
+        "curled tip moved away from socket: {posed_tip_to_sock} vs {rest_tip_to_sock}"
+    );
+
+    // Also cover an already-exported rig where an unmapped 3-bone finger chain
+    // sits under `DEF-hand.L/R` outside `skins[0].joints`: `place_sockets` and
+    // `attack` still place the palm socket and key the finger nodes.
+    let mut unskinned = raw.clone();
+    for node in unskinned.array_mut("nodes").iter_mut() {
+        let name = node
+            .get("name")
+            .and_then(motion_core::json::Json::as_str)
+            .unwrap_or("")
+            .to_string();
+        if let Some(rest) = name.strip_prefix("Finger") {
+            node.set("name", motion_core::json::Json::str(&format!("Claw{rest}")));
+        }
+    }
+    let (mut unskinned_std, _) = match standardize(&unskinned, "humanoid").unwrap() {
+        Outcome::Done(d, r) => (Document::parse(&d.to_bytes().unwrap()).unwrap(), r),
+        Outcome::Refused(_, why) => panic!("{why}"),
+    };
+    let placed = motion_core::attack::grip::place_sockets(&mut unskinned_std).unwrap();
+    assert_eq!(placed, vec!["Socket_Hand_L", "Socket_Hand_R"]);
+    let (built_u, rep_u) = build(&unskinned_std, &spec, None).unwrap();
+    assert!(rep_u.socket_rewritten);
+    let rig_u = Rig::from_doc(&built_u).unwrap();
+    let anim_u = &Animation::load_all(&built_u).unwrap()[0];
+    let f1_u = rig_u.find("Claw1_R").unwrap();
+    assert!(
+        !rig_u.joints().contains(&f1_u),
+        "Claw1_R should be outside skins[0].joints"
+    );
+    assert!(
+        anim_u.animated_nodes().contains(&f1_u),
+        "unskinned Claw1_R must still be keyed by attack::build"
+    );
+}

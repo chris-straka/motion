@@ -357,3 +357,48 @@ fn a_raised_arm_reads_and_standing_still_does_not() {
     // lunge is shot from the same place as the still clip's.
     assert_eq!(moved_shots[0].body, shots[0].body);
 }
+
+#[test]
+fn authored_sweep_on_mitten_humanoid_passes_grip_and_open_hand_fails() {
+    use motion_core::attack::{build, parse_spec, preset};
+    use motion_core::fixture::humanoid_mitten;
+    use motion_core::motioncheck::sample;
+    use motion_core::readcam::BladePose;
+    use motion_core::rig::Animation;
+
+    let raw = humanoid_mitten(Naming::Plain, true, 75.0).unwrap();
+    let base_doc = match standardize(&raw, "humanoid").unwrap() {
+        Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+        Outcome::Refused(_, why) => panic!("{why}"),
+    };
+    let spec = parse_spec(preset("sweep").unwrap()).unwrap();
+    let (closed_doc, _) = build(&base_doc, &spec, None).unwrap();
+    let closed_doc = Document::parse(&closed_doc.to_bytes().unwrap()).unwrap();
+    let subj = Subject::new(&closed_doc, &Options::default()).unwrap();
+    let mut cam_opts = CamOptions::default();
+    cam_opts.blade_pose = BladePose::Socket;
+    let stage = Stage::new(&closed_doc, &subj, &cam_opts).unwrap();
+    let anim = &Animation::load_all(&closed_doc).unwrap()[0];
+    let (times, frames) = sample(&subj.rig, anim, None);
+    let dt = (times[times.len() - 1] - times[0]) / (times.len() - 1) as f64;
+    let (rc, _) = stage.read(&subj.rig, &frames, dt, &frames[0]);
+    assert!(rc.grip_applies && rc.grip.fingers, "{rc:?}");
+    assert!(rc.grip.handle_m < 0.045, "handle {} m", rc.grip.handle_m);
+    assert!(rc.grip.curl_deg > 35.0, "curl {} deg", rc.grip.curl_deg);
+    assert!((rc.grip.score - 1.0).abs() < 1e-9, "{:?}", rc.grip);
+    assert!((rc.score - rc.read_score).abs() < 1e-9, "{rc:?}");
+    assert!(rc.score > 0.35, "{rc:?}");
+
+    // Leaving the single finger chain open fails on curl and caps the score.
+    let mut open_spec = spec;
+    open_spec.close = 0.01;
+    let (open_doc, _) = build(&base_doc, &open_spec, None).unwrap();
+    let open_subj = Subject::new(&open_doc, &Options::default()).unwrap();
+    let open_stage = Stage::new(&open_doc, &open_subj, &cam_opts).unwrap();
+    let open_anim = &Animation::load_all(&open_doc).unwrap()[0];
+    let (_, open_frames) = sample(&open_subj.rig, open_anim, None);
+    let (open_rc, _) = open_stage.read(&open_subj.rig, &open_frames, dt, &open_frames[0]);
+    assert!(open_rc.grip.curl_deg < 2.0, "{:?}", open_rc.grip);
+    assert!(open_rc.grip.score < 0.05, "{:?}", open_rc.grip);
+    assert!(open_rc.score < 0.05, "{open_rc:?}");
+}

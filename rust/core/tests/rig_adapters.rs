@@ -761,3 +761,49 @@ fn retarget_aligns_the_hands_roll_by_the_knuckle_line() {
     }
     assert!(worst < 0.5, "knuckle lines differ by {} deg", worst);
 }
+
+#[test]
+fn standardize_preserves_single_finger_chain_and_places_palm_sockets() {
+    use motion_core::fixture::humanoid_mitten;
+    // Compare untwisted vs twisted single-finger rigs in an A-pose: both
+    // keep all six finger joints in the skin, preserve vertex positions, and
+    // place the exact same world-space palm sockets despite arbitrary joint rolls.
+    let mut world_sockets: Vec<[(Vec3, Vec3); 2]> = Vec::new();
+    for twisted in [false, true] {
+        let src = humanoid_mitten(Naming::Plain, twisted, 75.0).unwrap();
+        let before = skinned_positions(&src);
+        let (out, report) = done(standardize(&src, "humanoid").unwrap());
+        let out = Document::parse(&out.to_bytes().unwrap()).unwrap();
+        let after = skinned_positions(&out);
+        for (a, b) in before.iter().zip(&after) {
+            assert!(a.approx_eq(*b, 1e-5), "twisted={twisted}: {a:?} -> {b:?}");
+        }
+        // Only Root merges; all six Finger1..3_L/R joints become DEF-f_middle.01..03.
+        assert_eq!(report.merged.len(), 1, "{:?}", report.merged);
+        assert_eq!(report.merged[0].0, "Root");
+        let names = joint_names(&out);
+        for side in ["L", "R"] {
+            for seg in 1..=3 {
+                let want = format!("DEF-f_middle.0{seg}.{side}");
+                assert!(names.contains(&want), "missing {want} in {names:?}");
+            }
+        }
+        let rig = Rig::from_doc(&out).unwrap();
+        let pair: Vec<(Vec3, Vec3)> = ["L", "R"]
+            .iter()
+            .map(|side| {
+                let sock = rig.find(&format!("Socket_Hand_{side}")).unwrap();
+                let knuckle = rig.find(&format!("DEF-f_middle.01.{side}")).unwrap();
+                let sw = rig.rest_world[sock];
+                let d = (sw.t - rig.head(knuckle)).length();
+                assert!(d > 0.02 && d < 0.05, "socket {side} {d} m from knuckle");
+                (sw.t, sw.apply_linear(Vec3::new(0.0, 1.0, 0.0)).normalized())
+            })
+            .collect();
+        world_sockets.push([pair[0], pair[1]]);
+    }
+    for s in 0..2 {
+        assert!(world_sockets[0][s].0.approx_eq(world_sockets[1][s].0, 1e-6));
+        assert!(world_sockets[0][s].1.approx_eq(world_sockets[1][s].1, 1e-6));
+    }
+}

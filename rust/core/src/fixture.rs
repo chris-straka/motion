@@ -144,6 +144,79 @@ fn twist_of(i: usize) -> Quat {
     )
 }
 
+/// Procedural humanoid with a single unified three-bone finger chain per
+/// hand (`Finger1..3_L/R` in `Plain`, `mixamorig:Left/RightHandFinger1..3`
+/// in `Mixamo`, `DEF-f_middle.01..03.L/R` in `Def`), for testing mitten /
+/// unified-finger rigs without touching the stub-hand [`humanoid`] goldens.
+pub fn humanoid_mitten(naming: Naming, twisted: bool, arms_down: f64) -> Result<Document, String> {
+    let mut lay: Vec<(&'static str, Option<&'static str>, [f64; 3])> = vec![
+        ("root", None, [0.0, 0.0, 0.0]),
+        ("hips", Some("root"), [0.0, 0.95, 0.0]),
+        ("spine1", Some("hips"), [0.0, 1.05, 0.0]),
+        ("spine2", Some("spine1"), [0.0, 1.2, 0.0]),
+        ("chest", Some("spine2"), [0.0, 1.35, 0.0]),
+        ("neck", Some("chest"), [0.0, 1.5, 0.0]),
+        ("head", Some("neck"), [0.0, 1.6, 0.0]),
+    ];
+    for (s, x) in [("L", 1.0), ("R", -1.0)] {
+        let leak = |a: String| -> &'static str { Box::leak(a.into_boxed_str()) };
+        let k = |b: &str| leak(format!("{}.{}", b, s));
+        lay.push((k("shoulder"), Some("chest"), [0.04 * x, 1.45, 0.0]));
+        lay.push((k("upper_arm"), Some(k("shoulder")), [0.17 * x, 1.45, 0.0]));
+        lay.push((k("forearm"), Some(k("upper_arm")), [0.43 * x, 1.45, 0.0]));
+        lay.push((k("hand"), Some(k("forearm")), [0.68 * x, 1.45, 0.0]));
+        lay.push((k("finger1"), Some(k("hand")), [0.76 * x, 1.45, 0.0]));
+        lay.push((k("finger2"), Some(k("finger1")), [0.795 * x, 1.447, 0.0]));
+        lay.push((k("finger3"), Some(k("finger2")), [0.825 * x, 1.438, 0.0]));
+        lay.push((k("thigh"), Some("hips"), [0.09 * x, 0.92, 0.0]));
+        lay.push((k("shin"), Some(k("thigh")), [0.09 * x, 0.5, 0.0]));
+        lay.push((k("foot"), Some(k("shin")), [0.09 * x, 0.08, 0.0]));
+        lay.push((k("toe"), Some(k("foot")), [0.09 * x, 0.02, 0.12]));
+    }
+    if arms_down != 0.0 {
+        for side in ["L", "R"] {
+            let pivot_role = format!("upper_arm.{}", side);
+            let pivot = lay
+                .iter()
+                .find(|(r, _, _)| *r == pivot_role)
+                .map(|(_, _, h)| *h)
+                .unwrap();
+            let sign = if side == "L" { -1.0 } else { 1.0 };
+            let q = Quat::from_axis_angle(Vec3::new(0.0, 0.0, 1.0), sign * arms_down.to_radians());
+            for (role, _, head) in lay.iter_mut() {
+                let arm = ["forearm", "hand", "finger1", "finger2", "finger3"]
+                    .iter()
+                    .any(|b| *role == format!("{}.{}", b, side));
+                if arm {
+                    let p = Vec3::new(head[0] - pivot[0], head[1] - pivot[1], head[2] - pivot[2]);
+                    let r = q.rotate_vec(p);
+                    *head = [pivot[0] + r.x, pivot[1] + r.y, pivot[2] + r.z];
+                }
+            }
+        }
+    }
+    let mitten_name = |role: &str| -> String {
+        let (base, side) = match role.split_once('.') {
+            Some((b, s)) => (b, Some(s)),
+            None => (role, None),
+        };
+        let lr = |s: &str| if s == "L" { "Left" } else { "Right" };
+        match (naming, base, side) {
+            (Naming::Plain, "finger1", Some(s)) => format!("Finger1_{s}"),
+            (Naming::Plain, "finger2", Some(s)) => format!("Finger2_{s}"),
+            (Naming::Plain, "finger3", Some(s)) => format!("Finger3_{s}"),
+            (Naming::Mixamo, "finger1", Some(s)) => format!("mixamorig:{}HandFinger1", lr(s)),
+            (Naming::Mixamo, "finger2", Some(s)) => format!("mixamorig:{}HandFinger2", lr(s)),
+            (Naming::Mixamo, "finger3", Some(s)) => format!("mixamorig:{}HandFinger3", lr(s)),
+            (Naming::Def, "finger1", Some(s)) => format!("DEF-f_middle.01.{s}"),
+            (Naming::Def, "finger2", Some(s)) => format!("DEF-f_middle.02.{s}"),
+            (Naming::Def, "finger3", Some(s)) => format!("DEF-f_middle.03.{s}"),
+            _ => bone_name(role, naming),
+        }
+    };
+    build_doc(&lay, twisted, &mitten_name)
+}
+
 pub fn humanoid(naming: Naming, twisted: bool, walk: bool) -> Result<Document, String> {
     humanoid_posed(naming, twisted, walk, 0.0)
 }
@@ -179,7 +252,31 @@ pub fn humanoid_posed(
             }
         }
     }
-    let lay = lay;
+    let mut doc = build_doc(&lay, twisted, &|role| bone_name(role, naming))?;
+    if walk {
+        let world: Vec<Affine> = lay
+            .iter()
+            .enumerate()
+            .map(|(i, (_, _, head))| {
+                let pos = Vec3::new(head[0], head[1], head[2]);
+                let rot = if twisted { twist_of(i) } else { Quat::IDENTITY };
+                Affine::from_trs(pos, rot, Vec3::new(1.0, 1.0, 1.0))
+            })
+            .collect();
+        add_walk(
+            &mut doc,
+            &world,
+            &lay.iter().map(|(r, _, _)| *r).collect::<Vec<_>>(),
+        )?;
+    }
+    Ok(doc)
+}
+
+fn build_doc(
+    lay: &[(&'static str, Option<&'static str>, [f64; 3])],
+    twisted: bool,
+    name_of: &dyn Fn(&str) -> String,
+) -> Result<Document, String> {
     let idx = |role: &str| lay.iter().position(|(r, _, _)| *r == role).unwrap();
     let n = lay.len();
     let mut doc = Document {
@@ -203,7 +300,7 @@ pub fn humanoid_posed(
         let local = pw.inverse().unwrap().mul(&want);
         world[i] = want;
         let (t, r, s) = local.decompose();
-        let mut node = Json::obj(vec![("name", Json::str(&bone_name(role, naming)))]);
+        let mut node = Json::obj(vec![("name", Json::str(&name_of(role)))]);
         set_node_trs(&mut node, t, r, s);
         let kids: Vec<Json> = lay
             .iter()
@@ -349,13 +446,6 @@ pub fn humanoid_posed(
         )])]),
     );
     doc.json.set("scene", Json::num(0.0));
-    if walk {
-        add_walk(
-            &mut doc,
-            &world,
-            &lay.iter().map(|(r, _, _)| *r).collect::<Vec<_>>(),
-        )?;
-    }
     Ok(doc)
 }
 

@@ -204,6 +204,75 @@ fn failures_report_ok_false_and_errors_write_nothing() {
     assert_eq!(run(&["adapter", "standardize"]), 2);
 }
 
+#[test]
+fn socket_and_attack_cli_close_a_single_finger_chain() {
+    use motion_core::fixture::humanoid_mitten;
+    let dir = workdir("mitten_cli");
+    write(
+        &humanoid_mitten(Naming::Plain, true, 75.0).unwrap(),
+        &dir.join("raw.glb"),
+    );
+    assert_eq!(
+        run(&[
+            "standardize",
+            "--input",
+            s(&dir.join("raw.glb")),
+            "--output",
+            s(&dir.join("std.glb")),
+        ]),
+        0
+    );
+    assert_eq!(
+        run(&[
+            "socket",
+            "--input",
+            s(&dir.join("std.glb")),
+            "--output",
+            s(&dir.join("sock.glb")),
+        ]),
+        0
+    );
+    assert_eq!(
+        run(&[
+            "attack",
+            "--rig",
+            s(&dir.join("sock.glb")),
+            "--preset",
+            "sweep",
+            "--output",
+            s(&dir.join("atk.glb")),
+        ]),
+        0
+    );
+    let out = Command::new(bin())
+        .args([
+            "motion",
+            "check",
+            "--input",
+            s(&dir.join("atk.glb")),
+            "--clip",
+            "sweep",
+            "--camera",
+            "game",
+            "--blade-pose",
+            "socket",
+            "--no-through",
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0));
+    let j = parse(&String::from_utf8(out.stdout).unwrap()).unwrap();
+    let grip = j.get("clips").unwrap().as_arr().unwrap()[0]
+        .get("read_cam")
+        .unwrap()
+        .get("grip")
+        .unwrap();
+    assert_eq!(grip.get("ok").unwrap().as_bool(), Some(true));
+    assert_eq!(grip.get("fingers").unwrap().as_bool(), Some(true));
+    assert!(grip.get("score").unwrap().as_f64().unwrap() > 0.95);
+}
+
 fn blender() -> Option<PathBuf> {
     for v in ["BLENDER_BIN", "BLENDER"] {
         if let Ok(p) = std::env::var(v) {
