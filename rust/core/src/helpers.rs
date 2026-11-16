@@ -14,15 +14,18 @@
 //! `extras.helper_bone = {"driver": <limb>, "share": 0.5}` so tools that
 //! pose the rig (weightforge) can drive it the same way.
 
-use crate::glb::{node_trs, set_node_trs, Document};
+use crate::glb::{canonical_quat, node_trs, set_node_trs, Document};
+use crate::humanoid;
 use crate::json::Json;
+use crate::keypose::fit::twist_angle;
 use crate::math::Quat;
 use crate::rig::{Rig, Trs};
 
 /// Fraction of the driver's rotation the helper takes.
 pub const SHARE: f64 = 0.5;
 
-/// `(helper, driver)`; the helper's parent is the driver's parent.
+/// `(helper, driver)` for auto-inserted proximal limb helpers; the helper's
+/// parent is the driver's parent.
 pub fn table() -> Vec<(String, String)> {
     let mut out = Vec::new();
     for side in ["L", "R"] {
@@ -40,24 +43,68 @@ pub fn table() -> Vec<(String, String)> {
 }
 
 pub fn is_helper(name: &str) -> bool {
-    table().iter().any(|(h, _)| h == name)
+    matches!(name, "DEF-forearm_twist.L" | "DEF-forearm_twist.R")
+        || table().iter().any(|(h, _)| h == name)
 }
 
 pub fn driver_of(name: &str) -> Option<String> {
     table().into_iter().find(|(h, _)| h == name).map(|(_, d)| d)
 }
 
-/// `(helper node, driver node)` for every helper the rig has, when the
-/// helper hangs from the driver's parent (the only layout the rule
-/// knows).
+fn find_or_mapped(rig: &Rig, map: &Option<humanoid::Mapping>, name: &str) -> Option<usize> {
+    rig.find(name)
+        .or_else(|| map.as_ref().and_then(|m| m.node_of(name)))
+}
+
+/// `(helper node, driver node)` for every proximal helper the rig has, when
+/// the helper hangs from the driver's parent (the only layout the rule
+/// knows). Also matches unstandardized twist names (`UpperArmTwist_R`, etc.).
 pub fn present(rig: &Rig) -> Vec<(usize, usize)> {
+    let map = rig
+        .find("DEF-spine")
+        .is_none()
+        .then(|| humanoid::map_rig(rig));
     table()
         .iter()
         .filter_map(|(h, d)| {
-            let (hn, dn) = (rig.find(h)?, rig.find(d)?);
+            let (hn, dn) = (find_or_mapped(rig, &map, h)?, find_or_mapped(rig, &map, d)?);
             (rig.parent[hn] == rig.parent[dn]).then_some((hn, dn))
         })
         .collect()
+}
+
+/// `(forearm_twist node, forearm node, hand node)` for every distal forearm
+/// twist helper hanging under `forearm` alongside `hand`.
+pub fn forearm_twists(rig: &Rig) -> Vec<(usize, usize, usize)> {
+    let map = rig
+        .find("DEF-spine")
+        .is_none()
+        .then(|| humanoid::map_rig(rig));
+    let mut out = Vec::new();
+    for side in ["L", "R"] {
+        let (Some(hn), Some(fo), Some(ha)) = (
+            find_or_mapped(rig, &map, &format!("DEF-forearm_twist.{side}")),
+            find_or_mapped(rig, &map, &format!("DEF-forearm.{side}")),
+            find_or_mapped(rig, &map, &format!("DEF-hand.{side}")),
+        ) else {
+            continue;
+        };
+        if rig.parent[hn] == Some(fo) && rig.parent[ha] == Some(fo) {
+            out.push((hn, fo, ha));
+        }
+    }
+    out
+}
+
+/// Every helper node `drive` updates on `rig`.
+pub fn driven_nodes(rig: &Rig) -> Vec<usize> {
+    let mut out: Vec<usize> = present(rig).into_iter().map(|(h, _)| h).collect();
+    for (h, _, _) in forearm_twists(rig) {
+        if !out.contains(&h) {
+            out.push(h);
+        }
+    }
+    out
 }
 
 /// The helper's local transform for a driver local transform: the rest
@@ -72,11 +119,55 @@ pub fn helper_local(rig: &Rig, helper: usize, driver: usize, driver_local: Trs) 
     out
 }
 
+/// Distal forearm twist helper local transform: turns about the forearm->hand
+/// axis by `SHARE` of `hand`'s twist change from rest relative to `forearm`.
+pub fn forearm_twist_local(
+    rig: &Rig,
+    helper: usize,
+    forearm: usize,
+    hand: usize,
+    hand_local: Trs,
+) -> Trs {
+    let mut out = rig.rest[helper];
+    let along = rig.rest_world[forearm]
+        .rotation()
+        .conj()
+        .rotate_vec(rig.head(hand) - rig.head(forearm));
+    if along.length() < 1e-9 {
+        return out;
+    }
+    let axis_f = along.normalized();
+    let delta = hand_local.r.mul(rig.rest[hand].r.conj());
+    let tw = twist_angle(delta.normalized(), axis_f);
+    out.r = canonical_quat(Quat::from_axis_angle(axis_f, SHARE * tw).mul(rig.rest[helper].r));
+    out
+}
+
 /// Set every present helper's local from its driver (posed or rest).
 pub fn drive(rig: &Rig, locals: &mut [Option<Trs>]) {
     for (h, d) in present(rig) {
         let dl = locals[d].unwrap_or(rig.rest[d]);
         locals[h] = Some(helper_local(rig, h, d, dl));
+    }
+    for (h, fo, ha) in forearm_twists(rig) {
+        let hl = locals[ha].unwrap_or(rig.rest[ha]);
+        locals[h] = Some(forearm_twist_local(rig, h, fo, ha, hl));
+    }
+}
+
+/// Fill any unkeyed helper nodes from their drivers (for pose-sheet sampling).
+pub fn drive_missing(rig: &Rig, locals: &mut [Option<Trs>]) {
+    for (h, d) in present(rig) {
+        if locals[h].is_none() {
+            let dl = locals[d].unwrap_or(rig.rest[d]);
+            locals[h] = Some(helper_local(rig, h, d, dl));
+        }
+    }
+    for (h, fo, ha) in forearm_twists(rig) {
+        if locals[h].is_none() {
+            let hl = locals[ha].unwrap_or(rig.rest[ha]);
+            locals[h] = Some(forearm_twist_local(rig, h, fo, ha, hl));
+        }
     }
 }
 

@@ -292,9 +292,9 @@ pub fn build(
         (
             "helpers",
             Json::Arr(
-                crate::helpers::present(&rig)
+                crate::helpers::driven_nodes(&rig)
                     .iter()
-                    .map(|(h, _)| Json::str(&rig.names[*h]))
+                    .map(|&h| Json::str(&rig.names[h]))
                     .collect(),
             ),
         ),
@@ -319,12 +319,7 @@ pub fn clip_samples(
             let mut locals = anim.sample(&rig, anim.duration * f);
             // Clips without helper keys: show the helpers as the pipeline
             // would bake them.
-            for (h, d) in crate::helpers::present(&rig) {
-                if locals[h].is_none() {
-                    let dl = locals[d].unwrap_or(rig.rest[d]);
-                    locals[h] = Some(crate::helpers::helper_local(&rig, h, d, dl));
-                }
-            }
+            crate::helpers::drive_missing(&rig, &mut locals);
             if let Some(h) = hips {
                 if let Some(trs) = locals[h].as_mut() {
                     let rest = rig.rest[h].t;

@@ -471,7 +471,7 @@ pub fn written_nodes(rig: &Rig, map: &Mapping, anim: &Animation) -> Vec<usize> {
             add(map.node_of(&format!("DEF-{b}.{side}")));
         }
     }
-    for (h, _) in crate::helpers::present(rig) {
+    for h in crate::helpers::driven_nodes(rig) {
         add(Some(h));
     }
     nodes.sort_unstable();

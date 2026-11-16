@@ -523,9 +523,13 @@ pub fn retarget_with(
             let mut times = Vec::with_capacity(frames);
             // Driven nodes: the shared bones, then the twist/helpers baked
             // from their drivers (the game needs no constraint code).
-            let helpers = crate::helpers::present(&tgt.rig);
+            let helpers = crate::helpers::driven_nodes(&tgt.rig);
             let mut nodes: Vec<usize> = transfer.shared.iter().map(|(t, _)| *t).collect();
-            nodes.extend(helpers.iter().map(|(h, _)| *h));
+            for h in helpers {
+                if !nodes.contains(&h) {
+                    nodes.push(h);
+                }
+            }
             let mut tracks: Vec<Vec<Trs>> = vec![Vec::with_capacity(frames); nodes.len()];
             let mut max_err: f64 = 0.0;
             let mut posed: Vec<Vec<Option<Trs>>> = Vec::with_capacity(frames);

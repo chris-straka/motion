@@ -334,7 +334,7 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
 
     // Write: every mapped bone and helper, the hips' translation.
     let mut nodes: Vec<usize> = info.map.pairs.iter().map(|(n, _)| *n).collect();
-    for (h, _) in helpers::present(&info.rig) {
+    for h in helpers::driven_nodes(&info.rig) {
         if !nodes.contains(&h) {
             nodes.push(h);
         }

@@ -3,8 +3,8 @@
 //! Canonical names are rigforge's `biped_hero` deform bones (Rigify `DEF-*`
 //! naming), so clips made on the rigforge hero rig and clips retargeted
 //! by motionforge address the same bones. The table below is the bone
-//! set of rigforge's mobile game export (65 bones) plus four twist/helper
-//! bones (`helpers.rs`: upper arms and thighs); its parents are the
+//! set of rigforge's mobile game export (65 bones) plus six twist/helper
+//! bones (`helpers.rs`: upper arms, forearms and thighs); its parents are the
 //! anatomical chain (thigh under the hips, arm under the shoulder),
 //! not Rigify's flat deform parenting, so local rotations mean the same
 //! thing on every character. Rigs keep whatever subset they have; the
@@ -51,6 +51,7 @@ pub fn canonical() -> Vec<(String, Option<String>)> {
         add(s("upper_arm"), Some(s("shoulder")));
         add(s("upper_arm_twist"), Some(s("shoulder")));
         add(s("forearm"), Some(s("upper_arm")));
+        add(s("forearm_twist"), Some(s("forearm")));
         add(s("hand"), Some(s("forearm")));
         for palm in 1..=4 {
             add(format!("DEF-palm.{:02}.{}", palm, side), Some(s("hand")));
@@ -233,9 +234,17 @@ fn sided_base(base: &str) -> Option<String> {
     let simple = match base {
         "shoulder" | "clavicle" | "collar" | "collarbone" => Some("shoulder"),
         "arm" | "upperarm" | "uparm" | "humerus" => Some("upper_arm"),
+        "upperarmtwist" | "armtwist" | "uparmtwist" | "upperarmtwist01" | "upperarmtwist1" => {
+            Some("upper_arm_twist")
+        }
         "forearm" | "lowerarm" | "elbow" | "loarm" => Some("forearm"),
+        "forearmtwist" | "lowerarmtwist" | "loarmtwist" | "forearmtwist01" | "forearmtwist1"
+        | "lowerarmtwist01" | "lowerarmtwist1" => Some("forearm_twist"),
         "hand" | "wrist" => Some("hand"),
         "upleg" | "thigh" | "upperleg" | "hip" | "femur" => Some("thigh"),
+        "thightwist" | "uplegtwist" | "upperlegtwist" | "thightwist01" | "thightwist1" => {
+            Some("thigh_twist")
+        }
         "leg" | "lowerleg" | "shin" | "calf" | "knee" | "loleg" => Some("shin"),
         "foot" | "ankle" => Some("foot"),
         "toebase" | "toe" | "toes" | "ball" | "toe0" | "toe01" => Some("toe"),
@@ -560,7 +569,7 @@ mod tests {
     #[test]
     fn canonical_parents_precede_children() {
         let table = canonical();
-        assert_eq!(table.len(), 69);
+        assert_eq!(table.len(), 71);
         for (i, (_, parent)) in table.iter().enumerate() {
             if let Some(p) = parent {
                 assert!(table[..i].iter().any(|(n, _)| n == p), "{} after child", p);
@@ -592,6 +601,22 @@ mod tests {
         assert_eq!(
             sided_base(&squash(&split_side("Toe_L").0)),
             Some("toe".into())
+        );
+        assert_eq!(
+            sided_base(&squash(&split_side("UpperArmTwist_R").0)),
+            Some("upper_arm_twist".into())
+        );
+        assert_eq!(
+            sided_base(&squash(&split_side("ForearmTwist_L").0)),
+            Some("forearm_twist".into())
+        );
+        assert_eq!(
+            sided_base(&squash(&split_side("lowerarm_twist_01_r").0)),
+            Some("forearm_twist".into())
+        );
+        assert_eq!(
+            sided_base(&squash(&split_side("ThighTwist_L").0)),
+            Some("thigh_twist".into())
         );
         assert_eq!(sided_base(&squash(&split_side("Finger1_L").0)), None);
     }

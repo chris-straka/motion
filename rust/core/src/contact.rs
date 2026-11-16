@@ -1239,6 +1239,10 @@ fn owners(rig: &Rig, map: &Mapping) -> Vec<usize> {
             if let Some(d) = crate::helpers::driver_of(name) {
                 return map.node_of(&d).unwrap_or(i);
             }
+            if name.starts_with("DEF-forearm_twist") {
+                let side = if name.ends_with(".L") { "L" } else { "R" };
+                return map.node_of(&format!("DEF-forearm.{side}")).unwrap_or(i);
+            }
             if name.starts_with("DEF-pelvis") {
                 return map.node_of("DEF-spine").unwrap_or(i);
             }
