@@ -6,7 +6,10 @@ use motion_core::fixture::{humanoid, Naming};
 use motion_core::glb::Document;
 use motion_core::math::{Quat, Vec3};
 use motion_core::motioncheck::{strike_timing, Subject};
-use motion_core::readcam::{path_arc, score_of, CamOptions, Camera, Mask, Stage, READ_FULL};
+use motion_core::readcam::{
+    follow_offsets, grip_frame, grip_of, path_arc, score_of, CamOptions, Camera, Mask, Stage,
+    READ_FULL,
+};
 use motion_core::rig::Trs;
 use motion_core::standardize::{standardize, Outcome};
 
@@ -131,8 +134,108 @@ fn the_score_needs_an_arc_for_a_held_load_to_count() {
     assert_eq!(score_of(0.0, 0.0, 0.0, 30), 0.0);
     let f = READ_FULL;
     assert!((score_of(f[0], f[1], f[2], 4) - 1.0).abs() < 1e-12);
-    let half = score_of(f[0] / 2.0, 0.0, f[2] / 2.0, 4);
-    assert!((half - (0.5 + 0.5 + 0.5) / 4.0).abs() < 1e-12, "{half}");
+    // Combined by the weaker part: a full body and arc with no sweep
+    // score nothing, where the old average paid out 0.375.
+    assert_eq!(score_of(f[0] / 2.0, 0.0, f[2] / 2.0, 4), 0.0);
+    // Every part at half, no held load: half, less the missing bonus.
+    let half = score_of(f[0] / 2.0, f[1] / 2.0, f[2] / 2.0, 0);
+    assert!((half - 0.4).abs() < 1e-12, "{half}");
+    // A held load is a bonus, not a requirement: it lifts the same
+    // parts from 0.4 to 0.45 (a fifth, as far as the arc reads).
+    let held = score_of(f[0] / 2.0, f[1] / 2.0, f[2] / 2.0, 4);
+    assert!((held - 0.45).abs() < 1e-12, "{held}");
+}
+
+#[test]
+fn the_camera_follows_the_root_only_once_he_travels() {
+    let still: Vec<Vec3> = (0..20).map(|_| Vec3::ZERO).collect();
+    assert!(follow_offsets(&still, 1.0).iter().all(|o| *o == Vec3::ZERO));
+    // A short step (0.2 m) does not move the camera.
+    let step: Vec<Vec3> = (0..20)
+        .map(|f| Vec3::new(0.0, 0.0, 0.01 * f as f64))
+        .collect();
+    assert!(follow_offsets(&step, 1.0).iter().all(|o| *o == Vec3::ZERO));
+    // A 1.9 m walk: the camera starts where he starts and ends most
+    // of the way with him (the 9-frame smoothing lags the last step).
+    let walk: Vec<Vec3> = (0..20)
+        .map(|f| Vec3::new(0.0, 0.0, 0.1 * f as f64))
+        .collect();
+    let off = follow_offsets(&walk, 1.0);
+    assert_eq!(off[0], Vec3::ZERO);
+    assert!(off[19].z > 1.4 && off[19].z < 1.9, "{:?}", off[19]);
+    for w in off.windows(2) {
+        assert!(w[1].z >= w[0].z - 1e-12, "the follow never runs back");
+    }
+    // Height is not followed: a jump does not lift the camera.
+    let jump: Vec<Vec3> = (0..20)
+        .map(|f| Vec3::new(0.0, 0.1 * f as f64, 0.0))
+        .collect();
+    assert!(follow_offsets(&jump, 1.0).iter().all(|o| *o == Vec3::ZERO));
+}
+
+#[test]
+fn a_blade_behind_the_body_is_not_visible() {
+    let mut body = Mask::new(20, 20);
+    let mut body_depth = vec![f64::INFINITY; 400];
+    body.fill_tri_depth(
+        (2.0, 2.0),
+        (18.0, 2.0),
+        (2.0, 18.0),
+        2.0,
+        2.0,
+        2.0,
+        &mut body_depth,
+    );
+    assert!(body.area() > 100);
+    // The same ribbon behind it (depth 3): nothing counts.
+    let mut behind = Mask::new(20, 20);
+    let mut bd = vec![f64::INFINITY; 400];
+    behind.fill_segment_depth((4.0, 5.0), (12.0, 5.0), 1.0, 1.0, 3.0, 3.0, &mut bd);
+    let raw = behind.area();
+    assert!(raw > 0);
+    behind.cull_behind(&bd, &body_depth, 0.02);
+    assert_eq!(behind.area(), 0);
+    // In front of it (depth 1): everything counts.
+    let mut front = Mask::new(20, 20);
+    let mut fd = vec![f64::INFINITY; 400];
+    front.fill_segment_depth((4.0, 5.0), (12.0, 5.0), 1.0, 1.0, 1.0, 1.0, &mut fd);
+    front.cull_behind(&fd, &body_depth, 0.02);
+    assert_eq!(front.area(), raw);
+}
+
+#[test]
+fn the_grip_reads_a_closed_hand_and_an_open_one() {
+    let palm = Vec3::new(0.1, 0.0, 0.0);
+    let dir = Vec3::new(0.0, 1.0, 0.0);
+    // Straight fingers pointing along +x, handle in the palm.
+    let open = vec![vec![
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.1, 0.0, 0.0),
+        Vec3::new(0.2, 0.0, 0.0),
+        Vec3::new(0.3, 0.0, 0.0),
+    ]];
+    let (handle, axis, curl, _) = grip_frame(palm, palm, dir, &open);
+    assert!(handle.abs() < 1e-12 && axis.abs() < 1e-12);
+    assert_eq!(curl, Some(0.0));
+    assert_eq!(grip_of(handle, curl), 0.0, "an open hand holds nothing");
+    // The same finger bent 90 deg at each joint.
+    let closed = vec![vec![
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.1, 0.0, 0.0),
+        Vec3::new(0.1, 0.1, 0.0),
+        Vec3::new(0.2, 0.1, 0.0),
+    ]];
+    let (_, _, curl, tip) = grip_frame(palm, palm, dir, &closed);
+    assert!((curl.unwrap() - 90.0).abs() < 1e-9, "{curl:?}");
+    // The tip ends one segment (0.2 m here) past the handle's line:
+    // the extrapolated end joint lands at (0.3, 0.1, 0).
+    assert!((tip - 0.2).abs() < 1e-9, "{tip}");
+    assert_eq!(grip_of(0.0, curl), 1.0);
+    // A socket floating 12 cm off the palm fails however curled.
+    assert_eq!(grip_of(0.12, Some(90.0)), 0.0);
+    // No measurable fingers: the handle alone is judged.
+    assert_eq!(grip_of(0.0, None), 1.0);
+    assert_eq!(grip_of(0.12, None), 0.0);
 }
 
 #[test]
@@ -186,8 +289,52 @@ fn a_raised_arm_reads_and_standing_still_does_not() {
     let (read, _) = stage.read(rig, &raise, dt, &neutral);
     assert!(read.body_change > 0.05, "{read:?}");
     assert!(read.arc_len > 0.3, "{read:?}");
-    assert!(read.score > calm.score + 0.05, "{read:?} vs {calm:?}");
+    assert!(
+        read.read_score > calm.read_score + 0.05,
+        "{read:?} vs {calm:?}"
+    );
+    // The fixture's standardized socket was not made for the game's
+    // held pose: the handle sits 12 cm off its one finger root, so
+    // the grip fails and caps the score at zero, however well the
+    // arm reads. (The game rig's own numbers are calibrated in
+    // `docs/motion-check.md`.)
+    assert!(read.grip_applies && !read.grip.fingers, "{read:?}");
+    assert_eq!(read.grip.score, 0.0, "{read:?}");
+    assert_eq!(read.score, 0.0, "{read:?}");
     // Byte for byte the same twice.
     let (again, _) = stage.read(rig, &raise, dt, &neutral);
     assert_eq!(format!("{read:?}"), format!("{again:?}"));
+    // The same arm swung while he lunges a metre forward: the camera
+    // follows the root, so the read barely moves. On the old fixed
+    // camera he walked toward (and past) the lens and the body
+    // change collapsed.
+    let hips = rig.find("DEF-spine").unwrap();
+    let mut lunge = raise.clone();
+    for (f, fr) in lunge.iter_mut().enumerate() {
+        let mut t = fr[hips].unwrap_or(rig.rest[hips]);
+        // He holds his stance for 6 frames, lunges a metre by frame
+        // 20, and holds: as a real clip travels (a camera that smoothed
+        // over a move already under way at frame 0 would lag it, the
+        // renderer's included).
+        let z = ((f as f64 - 6.0) / 14.0).clamp(0.0, 1.0);
+        t.t = t.t + Vec3::new(0.0, 0.0, z);
+        fr[hips] = Some(t);
+    }
+    let (_, still_shots) = stage.read(rig, &raise, dt, &neutral);
+    let (moved, moved_shots) = stage.read(rig, &lunge, dt, &neutral);
+    // Mid-lunge (frame 12, the smoothing centred on the ramp) the
+    // followed shot is the still clip's shot: same pose, same mask,
+    // a metre further forward. Unfollowed, he would be shot from the
+    // stance's camera and the mask would sit a body-width off.
+    assert!(
+        moved_shots[12].body.iou(&still_shots[12].body) > 0.9,
+        "followed {} vs still {}",
+        moved_shots[12].body.iou(&still_shots[12].body),
+        still_shots[12].body.area()
+    );
+    assert!(moved.body_change > 0.05, "{moved:?}");
+    assert!(moved_shots[0].body.area() > 500);
+    // The neutral frame is not followed anywhere: frame 0 of the
+    // lunge is shot from the same place as the still clip's.
+    assert_eq!(moved_shots[0].body, shots[0].body);
 }

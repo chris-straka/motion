@@ -3,7 +3,14 @@
 //!
 //! Per frame the skinned body and the blade (a ribbon from the guard to
 //! the tip, held at the hand socket as the game holds it) are projected
-//! through the game's follow camera and filled into a small mask. From
+//! through the game's follow camera and filled into a small mask. The
+//! camera follows the root the way the game's does (the hips' path
+//! across the floor, smoothed over 9 frames, once he travels 0.25 m;
+//! `tools/bench/motion_video_render.py` `root_path`), so a lunge stays
+//! framed instead of walking out of a fixed shot. The blade counts only
+//! where it is visible: every body pixel carries its depth, and a blade
+//! pixel behind the body (past a 2 cm grace for the fist round the
+//! guard) is not sweep, not pose change, and its tip is not arc. From
 //! the masks:
 //!
 //! - **Pose change**: the largest `1 - IoU` between a frame of the strike
@@ -25,6 +32,24 @@
 //!   strike's fastest frame whose silhouette changes less than
 //!   `STILL_SHARE` from the frame before: a held anticipation. It counts
 //!   in the score only as far as the arc after it reads.
+//!
+//! The score is the weakest of the body, sweep and arc parts (each
+//! against `READ_FULL`, capped at 1): an average let a wide blade sweep
+//! hide a body that never moves, which is the attack the owner could
+//! not read. A held load is a bonus of at most a fifth on top of that
+//! weakest part, never a requirement (the readable reference attacks
+//! include some with no held load at all). The grip (below) then caps
+//! the score the same way: a strike that reads but is not held scores
+//! as a grip, not as an attack.
+//!
+//! - **Grip**: over the strike (load to settle), is the sword actually
+//!   held? The handle's middle (the guard backed off by the guard
+//!   distance) against the palm (the mean finger root, else the hand
+//!   joint); the fingers' mean bend; and the fingertips' distance to
+//!   the handle's line. A good grip puts the handle in the palm and
+//!   bends the fingers round it; an open hand or a socket floating off
+//!   the palm fails however clear the silhouette is. Combined by the
+//!   weaker part again (handle in the palm, fingers closed).
 //!
 //! The strike's frames are `motion check`'s: the fastest tip frame, the
 //! load before it ([`crate::motioncheck::strike_timing`]); the settle is
@@ -247,6 +272,93 @@ impl Mask {
         self.fill_tri(p0, p2, p3);
     }
 
+    /// Fill a triangle and record each covered pixel's interpolated
+    /// depth in `depth` (nearest wins; `depth` starts at infinity).
+    pub fn fill_tri_depth(
+        &mut self,
+        a: (f64, f64),
+        b: (f64, f64),
+        c: (f64, f64),
+        za: f64,
+        zb: f64,
+        zc: f64,
+        depth: &mut [f64],
+    ) {
+        let area = edge(a, b, c);
+        if area.abs() < 1e-12 {
+            return;
+        }
+        let (lx, hx) = (a.0.min(b.0).min(c.0), a.0.max(b.0).max(c.0));
+        let (ly, hy) = (a.1.min(b.1).min(c.1), a.1.max(b.1).max(c.1));
+        let x0 = ((lx - 0.5).ceil() as i64).max(0);
+        let x1 = ((hx - 0.5).floor() as i64).min(self.w as i64 - 1);
+        let y0 = ((ly - 0.5).ceil() as i64).max(0);
+        let y1 = ((hy - 0.5).floor() as i64).min(self.h as i64 - 1);
+        if x0 > x1 || y0 > y1 {
+            return;
+        }
+        for y in y0..=y1 {
+            let py = y as f64 + 0.5;
+            for x in x0..=x1 {
+                let p = (x as f64 + 0.5, py);
+                let (e0, e1, e2) = (edge(a, b, p), edge(b, c, p), edge(c, a, p));
+                let inside = if area > 0.0 {
+                    e0 >= 0.0 && e1 >= 0.0 && e2 >= 0.0
+                } else {
+                    e0 <= 0.0 && e1 <= 0.0 && e2 <= 0.0
+                };
+                if inside {
+                    let i = y as usize * self.w + x as usize;
+                    let z = (e1 * za + e2 * zb + e0 * zc) / area;
+                    if z < depth[i] {
+                        depth[i] = z;
+                        self.px[i] = true;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fill a thick segment with depth: `za` at `a`, `zb` at `b`.
+    pub fn fill_segment_depth(
+        &mut self,
+        a: (f64, f64),
+        b: (f64, f64),
+        ra: f64,
+        rb: f64,
+        za: f64,
+        zb: f64,
+        depth: &mut [f64],
+    ) {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len = (dx * dx + dy * dy).sqrt();
+        if len < 1e-9 {
+            let r = ra.max(rb);
+            let (p, q) = ((a.0 - r, a.1 - r), (a.0 + r, a.1 + r));
+            self.fill_tri_depth(p, (q.0, p.1), q, za, za, za, depth);
+            self.fill_tri_depth(p, q, (p.0, q.1), za, za, za, depth);
+            return;
+        }
+        let (nx, ny) = (-dy / len, dx / len);
+        let p0 = (a.0 + nx * ra, a.1 + ny * ra);
+        let p1 = (b.0 + nx * rb, b.1 + ny * rb);
+        let p2 = (b.0 - nx * rb, b.1 - ny * rb);
+        let p3 = (a.0 - nx * ra, a.1 - ny * ra);
+        self.fill_tri_depth(p0, p1, p2, za, zb, zb, depth);
+        self.fill_tri_depth(p0, p2, p3, za, zb, za, depth);
+    }
+
+    /// Drop the pixels that sit behind another surface: a pixel stays
+    /// only where its own depth is not past `other`'s by more than
+    /// `bias` (the fist round a held guard is that deep).
+    pub fn cull_behind(&mut self, own: &[f64], other: &[f64], bias: f64) {
+        for i in 0..self.px.len() {
+            if self.px[i] && own[i] > other[i] + bias {
+                self.px[i] = false;
+            }
+        }
+    }
+
     pub fn union_with(&mut self, o: &Mask) {
         for (a, b) in self.px.iter_mut().zip(&o.px) {
             *a |= *b;
@@ -421,18 +533,143 @@ pub struct ReadCam {
     pub body_px: usize,
     pub body_area: usize,
     pub blade: bool,
-    /// 0..1: the mean of the four parts, each against what a clearly
-    /// readable attack reaches (`READ_FULL`).
+    /// 0..1: the silhouette alone (body, sweep, arc and the held load,
+    /// before the grip caps it).
+    pub read_score: f64,
+    /// The grip over the strike, when the rig holds a blade.
+    pub grip: GripScore,
+    /// Whether a blade (and so a grip) was there to judge.
+    pub grip_applies: bool,
+    /// 0..1: the weaker of the silhouette and the grip.
     pub score: f64,
 }
 
-/// The read score from the body's change, the blade's sweep, the arc and
-/// the held load: each part against `READ_FULL`, capped at 1, averaged;
-/// the held load counts only as far as the strike after it reads as an
-/// arc (a still pose is not a held load).
+/// Is the sword held, over one strike? Distances are metres at the
+/// game's stature (GLB units divided out), so one threshold fits every
+/// character.
+#[derive(Clone, Debug)]
+pub struct GripScore {
+    /// 0..1, the weaker of the handle and finger parts.
+    pub score: f64,
+    /// Handle's middle to the palm, median over the strike.
+    pub handle_m: f64,
+    /// Palm to the handle's line, median over the strike.
+    pub axis_m: f64,
+    /// Mean finger bend, degrees (0 for a straight open hand).
+    pub curl_deg: f64,
+    /// Fingertips to the handle's line, median over the strike.
+    pub tip_m: f64,
+    /// The rig has finger chains long enough to bend measurably.
+    pub fingers: bool,
+    /// Frames judged (load to settle).
+    pub frames: usize,
+}
+
+impl Default for GripScore {
+    fn default() -> Self {
+        GripScore {
+            score: 1.0,
+            handle_m: 0.0,
+            axis_m: 0.0,
+            curl_deg: 0.0,
+            tip_m: 0.0,
+            fingers: false,
+            frames: 0,
+        }
+    }
+}
+
+/// Handle distance in the palm at this many metres; past
+/// `GRIP_HANDLE_BAD_M` the handle is not in the hand at all. A palm
+/// grip (`attack::grip::palm_hold`) puts the handle's middle about
+/// 3.3 cm from the knuckle line (a handle's and a finger's radius,
+/// a little down the fingers), so the good bound sits just past it.
+pub const GRIP_HANDLE_GOOD_M: f64 = 0.045;
+pub const GRIP_HANDLE_BAD_M: f64 = 0.115;
+/// Mean finger bend of a closed grip, degrees: a fist bends each joint
+/// roughly 30-60 deg (`attack::grip`'s fist table); an open hand is
+/// near 0, a relaxed hand about half a fist.
+pub const GRIP_CURL_FULL_DEG: f64 = 35.0;
+
+/// The grip's score from the handle's distance to the palm and the
+/// fingers' bend (`None` when the rig has no measurable fingers: the
+/// handle alone is judged, and `GripScore::fingers` says so). Each
+/// part 0..1, combined by the weaker.
+pub fn grip_of(handle_m: f64, curl_deg: Option<f64>) -> f64 {
+    let handle = (1.0 - (handle_m - GRIP_HANDLE_GOOD_M) / (GRIP_HANDLE_BAD_M - GRIP_HANDLE_GOOD_M))
+        .clamp(0.0, 1.0);
+    match curl_deg {
+        Some(c) => handle.min((c / GRIP_CURL_FULL_DEG).clamp(0.0, 1.0)),
+        None => handle,
+    }
+}
+
+/// One frame's grip measures: the handle's distance to the palm, the
+/// palm's distance to the handle's line, the fingers' mean bend in
+/// degrees (`None` when no chain bends measurably) and the fingertips'
+/// distance to the handle's line. `palm` is the mean finger root (or
+/// the hand joint); `grip` the handle's middle; `dir` the blade's
+/// direction; `chains` are finger joint positions, hand first.
+pub fn grip_frame(
+    palm: Vec3,
+    grip: Vec3,
+    dir: Vec3,
+    chains: &[Vec<Vec3>],
+) -> (f64, f64, Option<f64>, f64) {
+    let handle = (grip - palm).length();
+    let along = (palm - grip).dot(dir);
+    let axis = ((palm - grip) - dir.scale(along)).length();
+    let mut bends = Vec::new();
+    let mut tips = Vec::new();
+    for ch in chains {
+        for w in ch.windows(3) {
+            let (a, b) = (w[1] - w[0], w[2] - w[1]);
+            if a.length() > 1e-9 && b.length() > 1e-9 {
+                let c = (a.dot(b) / (a.length() * b.length())).clamp(-1.0, 1.0);
+                bends.push(detmath::acos(c).to_degrees());
+            }
+        }
+        if ch.len() >= 2 {
+            let tip = ch[ch.len() - 1] + (ch[ch.len() - 1] - ch[ch.len() - 2]);
+            let t = (tip - grip).dot(dir);
+            tips.push(((tip - grip) - dir.scale(t)).length());
+        }
+    }
+    let curl = if bends.is_empty() {
+        None
+    } else {
+        Some(bends.iter().sum::<f64>() / bends.len() as f64)
+    };
+    let tip = if tips.is_empty() {
+        0.0
+    } else {
+        tips.iter().sum::<f64>() / tips.len() as f64
+    };
+    (handle, axis, curl, tip)
+}
+
+fn median(v: &[f64]) -> f64 {
+    if v.is_empty() {
+        return 0.0;
+    }
+    let mut s = v.to_vec();
+    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let m = s.len() / 2;
+    if s.len() % 2 == 1 {
+        s[m]
+    } else {
+        0.5 * (s[m - 1] + s[m])
+    }
+}
+
+/// The silhouette score: the weakest of the body, sweep and arc parts
+/// (each against `READ_FULL`, capped at 1), with a held load worth at
+/// most a fifth on top of that weakest part, and only as far as the
+/// arc after it reads (a still pose is not a held load).
 pub fn score_of(body: f64, sweep: f64, arc: f64, hold: usize) -> f64 {
     let p = |v: f64, i: usize| (v / READ_FULL[i]).min(1.0);
-    (p(body, 0) + p(sweep, 1) + p(arc, 2) + p(hold as f64, 3) * p(arc, 2)) / 4.0
+    let weak = p(body, 0).min(p(sweep, 1)).min(p(arc, 2));
+    weak * (0.8 + 0.2 * p(hold as f64, 3) * p(arc, 2))
 }
 
 /// What a clearly readable attack reaches in each part (calibrated on
@@ -462,13 +699,46 @@ impl ReadCam {
             ("body_px", Json::num(self.body_px as f64)),
             ("body_area", Json::num(self.body_area as f64)),
             ("blade", Json::Bool(self.blade)),
+            ("read_score", Json::num(r(self.read_score, 3))),
+            (
+                "grip",
+                if self.grip_applies {
+                    Json::obj(vec![
+                        ("score", Json::num(r(self.grip.score, 3))),
+                        ("handle_cm", Json::num(r(self.grip.handle_m * 100.0, 1))),
+                        ("axis_cm", Json::num(r(self.grip.axis_m * 100.0, 1))),
+                        ("curl_deg", Json::num(r(self.grip.curl_deg, 1))),
+                        ("tip_cm", Json::num(r(self.grip.tip_m * 100.0, 1))),
+                        ("fingers", Json::Bool(self.grip.fingers)),
+                        ("frames", Json::num(self.grip.frames as f64)),
+                        ("ok", Json::Bool(self.grip.score >= 0.5)),
+                    ])
+                } else {
+                    Json::Null
+                },
+            ),
             ("score", Json::num(r(self.score, 3))),
         ])
     }
 
     pub fn line(&self) -> String {
+        let grip = if self.grip_applies {
+            format!(
+                ", grip {:.2} (handle {:.1} cm, curl {:.0} deg{})",
+                self.grip.score,
+                self.grip.handle_m * 100.0,
+                self.grip.curl_deg,
+                if self.grip.fingers {
+                    ""
+                } else {
+                    ", no fingers"
+                }
+            )
+        } else {
+            String::new()
+        };
         format!(
-            "{:<18} read at game camera {:.2}: body {:.2} (f{}), pose {:.2} (f{}), sweep {:.2}, arc {:.2} ({:.2} heights x {:.2}), load held {} fr; strike f{}-{}-{}\n",
+            "{:<18} read at game camera {:.2}: body {:.2} (f{}), pose {:.2} (f{}), sweep {:.2}, arc {:.2} ({:.2} heights x {:.2}), load held {} fr; strike f{}-{}-{}{}\n",
             "",
             self.score,
             self.body_change,
@@ -482,7 +752,8 @@ impl ReadCam {
             self.load_hold_frames,
             self.load_frame,
             self.peak_frame,
-            self.settle_frame
+            self.settle_frame,
+            grip
         )
     }
 }
@@ -533,8 +804,55 @@ pub struct Stage {
     mesh: Mesh,
     socket: Option<usize>,
     hand: Option<usize>,
+    hips: Option<usize>,
     blade: (Vec3, Vec3),
     width: f64,
+    /// Guard distance from the grip, metres (the handle's middle is
+    /// the guard backed off by this along the blade).
+    from_m: f64,
+    /// Finger roots (the palm) and chains (hand first) of the weapon
+    /// hand, for the grip.
+    finger_roots: Vec<usize>,
+    finger_chains: Vec<Vec<usize>>,
+}
+
+/// How far he must travel across the floor (metres at the game's
+/// stature) before the camera follows his root, and the smoothing
+/// window in frames: the renderer's own numbers
+/// (`motion_video_render.py` `root_path`).
+pub const FOLLOW_MIN_M: f64 = 0.25;
+pub const FOLLOW_WINDOW: usize = 9;
+
+/// Per-frame camera offsets that follow the root: the hips' horizontal
+/// travel from the first frame, smoothed over `FOLLOW_WINDOW` frames
+/// and re-zeroed at the first, or all zero when he never travels
+/// `FOLLOW_MIN_M`. Pure, so the following itself has a known answer.
+pub fn follow_offsets(hips: &[Vec3], unit: f64) -> Vec<Vec3> {
+    let n = hips.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let base = Vec3::new(hips[0].x, 0.0, hips[0].z);
+    let raw: Vec<Vec3> = hips
+        .iter()
+        .map(|h| Vec3::new(h.x, 0.0, h.z) - base)
+        .collect();
+    let furthest = raw.iter().map(|o| o.length()).fold(0.0, f64::max);
+    if unit <= 0.0 || furthest < FOLLOW_MIN_M * unit {
+        return vec![Vec3::ZERO; n];
+    }
+    let half = FOLLOW_WINDOW / 2;
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let (a, b) = (i.saturating_sub(half), (i + half + 1).min(n));
+        let mut sum = Vec3::ZERO;
+        for o in &raw[a..b] {
+            sum = sum + *o;
+        }
+        out.push(sum.scale(1.0 / (b - a) as f64));
+    }
+    let first = out[0];
+    out.iter().map(|o| *o - first).collect()
 }
 
 impl Stage {
@@ -557,14 +875,69 @@ impl Stage {
         } else {
             None
         };
+        // The grip's fingers: the canonical chains when the mapper
+        // found them, else the hand's own child chains (a single
+        // three-bone finger, as the game's rig has). Palm bones and
+        // the socket are not fingers.
+        let mut finger_roots: Vec<usize> = Vec::new();
+        let mut finger_chains: Vec<Vec<usize>> = Vec::new();
+        if let Some(h) = hand {
+            for finger in ["f_index", "f_middle", "f_ring", "f_pinky", "thumb"] {
+                let chain: Vec<usize> = (1..=3)
+                    .filter_map(|seg| {
+                        subject
+                            .map
+                            .node_of(&format!("DEF-{}.{:02}.{}", finger, seg, side))
+                    })
+                    .collect();
+                if chain.len() >= 2 {
+                    finger_roots.push(chain[0]);
+                    let mut full = vec![h];
+                    full.extend(chain);
+                    finger_chains.push(full);
+                } else if let Some(&root) = chain.first() {
+                    finger_roots.push(root);
+                }
+            }
+            if finger_chains.is_empty() {
+                for &c in &subject.rig.children[h] {
+                    if subject.rig.names[c].starts_with("Socket_") {
+                        continue;
+                    }
+                    let mut chain = vec![h, c];
+                    let mut cur = c;
+                    loop {
+                        let next = subject.rig.children[cur]
+                            .iter()
+                            .copied()
+                            .find(|&k| !subject.rig.names[k].starts_with("Socket_"));
+                        match next {
+                            Some(k) => {
+                                chain.push(k);
+                                cur = k;
+                            }
+                            None => break,
+                        }
+                    }
+                    if chain.len() >= 3 {
+                        finger_roots.push(c);
+                        finger_chains.push(chain);
+                    }
+                }
+            }
+        }
         Ok(Stage {
             cam: Camera::game(subject.forward(), opts, unit),
             unit,
             mesh: Mesh::build(doc, &subject.rig)?,
             socket,
             hand,
+            hips: subject.map.node_of("DEF-spine"),
             blade: blade_local(opts, unit),
             width: opts.blade_width_m * unit,
+            from_m: opts.blade_from_m,
+            finger_roots,
+            finger_chains,
         })
     }
 
@@ -574,33 +947,83 @@ impl Stage {
             .map(|s| (world[s].apply(self.blade.0), world[s].apply(self.blade.1)))
     }
 
+    /// The camera translated by a root-follow offset (same aim).
+    pub fn cam_at(&self, offset: Vec3) -> Camera {
+        Camera {
+            eye: self.cam.eye + offset,
+            ..self.cam
+        }
+    }
+
     pub fn shoot(&self, world: &[Affine]) -> Shot {
-        let cam = &self.cam;
+        self.shoot_cam(world, &self.cam)
+    }
+
+    /// One frame at `cam`: the body with its depth, and only the
+    /// visible blade (pixels not hidden behind the body, and a tip
+    /// that is on screen and not behind the body; a blade with no
+    /// socket falls back to the hand as its tip).
+    pub fn shoot_cam(&self, world: &[Affine], cam: &Camera) -> Shot {
         let mut body = Mask::new(cam.w, cam.h);
-        let pts: Vec<Option<(f64, f64)>> = self
+        let mut body_depth = vec![f64::INFINITY; cam.w * cam.h];
+        let pts: Vec<Option<(f64, f64, f64)>> = self
             .mesh
             .posed(world)
             .into_iter()
-            .map(|p| cam.project(p).map(|(x, y, _)| (x, y)))
+            .map(|p| cam.project(p))
             .collect();
         for t in &self.mesh.tris {
             if let (Some(a), Some(b), Some(c)) = (pts[t[0]], pts[t[1]], pts[t[2]]) {
-                body.fill_tri(a, b, c);
+                body.fill_tri_depth(
+                    (a.0, a.1),
+                    (b.0, b.1),
+                    (c.0, c.1),
+                    a.2,
+                    b.2,
+                    c.2,
+                    &mut body_depth,
+                );
             }
         }
+        // The fist round the guard is about this deep: a blade pixel
+        // only that far behind the body still reads as held.
+        let bias = 0.02 * self.unit;
         let mut tip = None;
         let blade = self.blade_at(world).and_then(|(g, t)| {
             let (pg, pt) = (cam.project(g)?, cam.project(t)?);
             let mut m = Mask::new(cam.w, cam.h);
+            let mut blade_depth = vec![f64::INFINITY; cam.w * cam.h];
             let half = |z: f64| cam.f * self.width * 0.5 / z;
-            m.fill_segment((pg.0, pg.1), (pt.0, pt.1), half(pg.2), half(pt.2));
-            tip = Some((pt.0, pt.1));
+            m.fill_segment_depth(
+                (pg.0, pg.1),
+                (pt.0, pt.1),
+                half(pg.2),
+                half(pt.2),
+                pg.2,
+                pt.2,
+                &mut blade_depth,
+            );
+            m.cull_behind(&blade_depth, &body_depth, bias);
+            let on_screen =
+                pt.0 >= 0.0 && pt.0 < cam.w as f64 && pt.1 >= 0.0 && pt.1 < cam.h as f64;
+            let hidden = if on_screen {
+                let i = pt.1 as usize * cam.w + pt.0 as usize;
+                pt.2 > body_depth[i] + bias
+            } else {
+                true
+            };
+            if on_screen && !hidden {
+                tip = Some((pt.0, pt.1));
+            }
             Some(m)
         });
-        if tip.is_none() {
+        if blade.is_none() {
             tip = self
                 .hand
                 .and_then(|h| cam.project(world[h].t))
+                .filter(|(x, y, _)| {
+                    *x >= 0.0 && *x < cam.w as f64 && *y >= 0.0 && *y < cam.h as f64
+                })
                 .map(|(x, y, _)| (x, y));
         }
         Shot { body, blade, tip }
@@ -616,7 +1039,17 @@ impl Stage {
     ) -> (ReadCam, Vec<Shot>) {
         let n = frames.len();
         let world: Vec<Vec<Affine>> = frames.iter().map(|f| rig.world(f)).collect();
-        let shots: Vec<Shot> = world.iter().map(|w| self.shoot(w)).collect();
+        // The game camera follows the root: each frame is shot from
+        // the base camera shifted by the hips' smoothed travel.
+        let hips_p: Vec<Vec3> = (0..n)
+            .map(|f| self.hips.map(|h| world[f][h].t).unwrap_or(Vec3::ZERO))
+            .collect();
+        let offsets = follow_offsets(&hips_p, self.unit);
+        let shots: Vec<Shot> = world
+            .iter()
+            .zip(&offsets)
+            .map(|(w, o)| self.shoot_cam(w, &self.cam_at(*o)))
+            .collect();
         let full = |s: &Shot| {
             let mut m = s.body.clone();
             if let Some(b) = &s.blade {
@@ -707,7 +1140,62 @@ impl Stage {
                 run = 0;
             }
         }
-        out.score = score_of(out.body_change, out.sweep, out.arc, out.load_hold_frames);
+        out.read_score = score_of(out.body_change, out.sweep, out.arc, out.load_hold_frames);
+        // The grip over the strike, capped into the score by its
+        // weaker part: a readable strike that is not held is a grip.
+        out.grip_applies = self.socket.is_some();
+        if out.grip_applies {
+            let (mut handles, mut axes, mut curls, mut tips) =
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            for f in load..=settle {
+                let Some((guard, tip)) = self.blade_at(&world[f]) else {
+                    continue;
+                };
+                let blade_vec = tip - guard;
+                if blade_vec.length() < 1e-9 {
+                    continue;
+                }
+                let dir = blade_vec.normalized();
+                let grip = guard - dir.scale(self.from_m * self.unit);
+                let palm = if self.finger_roots.is_empty() {
+                    hand_p[f]
+                } else {
+                    self.finger_roots
+                        .iter()
+                        .fold(Vec3::ZERO, |s, &r| s + world[f][r].t)
+                        .scale(1.0 / self.finger_roots.len() as f64)
+                };
+                let chains: Vec<Vec<Vec3>> = self
+                    .finger_chains
+                    .iter()
+                    .map(|ch| ch.iter().map(|&nd| world[f][nd].t).collect())
+                    .collect();
+                let (handle, axis, curl, tip_d) = grip_frame(palm, grip, dir, &chains);
+                handles.push(handle / self.unit);
+                axes.push(axis / self.unit);
+                if let Some(c) = curl {
+                    curls.push(c);
+                }
+                tips.push(tip_d / self.unit);
+            }
+            let curl = if curls.is_empty() {
+                None
+            } else {
+                Some(curls.iter().sum::<f64>() / curls.len() as f64)
+            };
+            out.grip = GripScore {
+                score: grip_of(median(&handles), curl),
+                handle_m: median(&handles),
+                axis_m: median(&axes),
+                curl_deg: curl.unwrap_or(0.0),
+                tip_m: median(&tips),
+                fingers: !curls.is_empty(),
+                frames: handles.len(),
+            };
+            out.score = out.read_score.min(out.grip.score);
+        } else {
+            out.score = out.read_score;
+        }
         (out, shots)
     }
 }

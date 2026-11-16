@@ -314,10 +314,12 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
     let mut best_score = f64::NEG_INFINITY;
     for &c in &carries {
         let (frames, trep) = make(c);
+        // The silhouette alone: a carry changes the timing, not the
+        // grip, and the grip cap would flatten every carry alike.
         let score = stage.as_ref().map(|(subject, st)| {
             st.read(&subject.rig, &frames, 1.0 / tp.fps, &frames[0])
                 .0
-                .score
+                .read_score
         });
         tried.push((c, score));
         let sc = score.unwrap_or(0.0);
