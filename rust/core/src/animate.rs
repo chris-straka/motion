@@ -199,32 +199,74 @@ fn rest_alignment(src: &Mapped, tgt: &Mapped, name: &str, yaw: Quat) -> Quat {
             _ => rest_alignment(src, tgt, &format!("DEF-forearm.{side}"), yaw),
         };
     }
+    // Leaf finger segments (`.03`, or `.02` when `.03` is absent) have no
+    // child to aim toward: inherit their parent finger segment's rest
+    // alignment so a T-pose -> A-pose retarget does not leave fingertips in
+    // the unaligned rest pose.
+    let stripped = name
+        .trim_start_matches("DEF-")
+        .trim_end_matches(".L")
+        .trim_end_matches(".R");
+    if (stripped.starts_with("f_") || stripped.starts_with("thumb.")) && !stripped.ends_with(".01")
+    {
+        if let Some(parent) = humanoid::canonical_parent(name) {
+            if tgt.map.node_of(&parent).is_some() && src.map.node_of(&parent).is_some() {
+                return rest_alignment(src, tgt, &parent, yaw);
+            }
+        }
+    }
     Quat::IDENTITY
 }
 
 /// The turn about the (aligned) hand direction `axis` that lays the
-/// target's knuckle line (index to little finger roots) on the source's,
-/// after `base` has aligned the hands' directions. A hand's direction
-/// leaves its roll free: the palm of a rig resting with its knuckles
-/// otherwise kept that difference in every frame, so a sword held in the
-/// palm pointed 24 degrees off the original Mixamo clip's on the hero.
-/// Identity unless both rigs share an index and a little or ring finger.
+/// target's knuckle line (index to little finger roots, or a single-finger
+/// hand's anatomical knuckle line) on the source's, after `base` has aligned
+/// the hands' directions. A hand's direction leaves its roll free: the palm
+/// of a rig resting with its knuckles otherwise kept that difference in
+/// every frame, so a sword held in the palm pointed 24 degrees off the
+/// original Mixamo clip's on the hero.
 fn hand_roll(src: &Mapped, tgt: &Mapped, side: &str, yaw: Quat, base: Quat, axis: Vec3) -> Quat {
-    // The same little finger on both rigs (pinky with pinky, else ring
-    // with ring), so the two lines mean the same thing.
     let has = |m: &Mapped, f: &str| m.map.node_of(&format!("DEF-{f}.01.{side}")).is_some();
-    let Some(little) = ["f_pinky", "f_ring"]
+    if let Some(little) = ["f_pinky", "f_ring"]
         .into_iter()
         .find(|f| has(src, f) && has(tgt, f))
-    else {
-        return Quat::IDENTITY;
+    {
+        let pick = |m: &Mapped| -> Option<Vec3> {
+            let index = m.map.node_of(&format!("DEF-f_index.01.{side}"))?;
+            let little = m.map.node_of(&format!("DEF-{little}.01.{side}"))?;
+            Some(m.rig.head(index) - m.rig.head(little))
+        };
+        let (Some(lt), Some(ls)) = (pick(tgt), pick(src)) else {
+            return Quat::IDENTITY;
+        };
+        let lt = base.rotate_vec(lt);
+        let ls = yaw.rotate_vec(ls);
+        let angle = crate::keypose::fit::signed_angle(lt, ls, axis);
+        return Quat::from_axis_angle(axis, angle);
+    }
+    let single_or_five = |m: &Mapped| -> Option<Vec3> {
+        if let Some(index) = m.map.node_of(&format!("DEF-f_index.01.{side}")) {
+            for f in ["f_pinky", "f_ring"] {
+                if let Some(little) = m.map.node_of(&format!("DEF-{f}.01.{side}")) {
+                    let v = m.rig.head(index) - m.rig.head(little);
+                    if v.length() > 1e-9 {
+                        return Some(v);
+                    }
+                }
+            }
+        }
+        let any_other = ["f_index", "f_ring", "f_pinky"].iter().any(|f| has(m, f));
+        if any_other {
+            return None;
+        }
+        let chain: Vec<usize> = (1..=3)
+            .filter_map(|k| m.map.node_of(&format!("DEF-f_middle.0{k}.{side}")))
+            .collect();
+        let (_, _, kn) =
+            crate::attack::grip::single_finger_axes(&m.rig, &chain, side == "R", m.forward)?;
+        Some(kn)
     };
-    let pick = |m: &Mapped| -> Option<Vec3> {
-        let index = m.map.node_of(&format!("DEF-f_index.01.{side}"))?;
-        let little = m.map.node_of(&format!("DEF-{little}.01.{side}"))?;
-        Some(m.rig.head(index) - m.rig.head(little))
-    };
-    let (Some(lt), Some(ls)) = (pick(tgt), pick(src)) else {
+    let (Some(lt), Some(ls)) = (single_or_five(tgt), single_or_five(src)) else {
         return Quat::IDENTITY;
     };
     let lt = base.rotate_vec(lt);

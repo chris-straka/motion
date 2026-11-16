@@ -21,12 +21,12 @@
 //! +Y along the blade, +X the leading edge toward the knuckles), so a
 //! sword parented to the socket with no further offset sits in the hand.
 
-use crate::glb::Document;
+use crate::glb::{canonical_quat, Document};
 use crate::json::Json;
 use crate::keypose::fit::RigInfo;
 use crate::math::{Mat3, Quat, Vec3};
 use crate::readcam::HEAD_SHARE;
-use crate::rig::Trs;
+use crate::rig::{Rig, Trs};
 
 /// Handle and finger half-thickness, metres on a 2 m hero.
 pub const HANDLE_R: f64 = 0.016;
@@ -78,41 +78,197 @@ fn bent(info: &RigInfo, node: usize, angle: f64) -> Trs {
     t
 }
 
+/// Rotate `node` by `angle` about a world-space rest axis `world_axis`,
+/// independent of how the rig rolled its joint local axes.
+fn bent_world(info: &RigInfo, node: usize, world_axis: Vec3, angle: f64) -> Trs {
+    let mut t = info.rig.rest[node];
+    let local_axis = info.rig.rest_world[node]
+        .rotation()
+        .conj()
+        .rotate_vec(world_axis)
+        .normalized();
+    t.r = canonical_quat(t.r.mul(Quat::from_axis_angle(local_axis, angle)));
+    t
+}
+
+/// A single unified finger / mitten chain (2 or 3 bones, knuckle first) on
+/// hand `s` when the hand does not have separate index and pinky chains:
+/// first `DEF-f_middle` from the mapper, else a single child chain under
+/// the hand node (for rigs whose finger chain was left outside the skin).
+pub fn single_chain(info: &RigInfo, s: usize) -> Option<Vec<usize>> {
+    if chain(info, "f_index", s).is_some() && chain(info, "f_pinky", s).is_some() {
+        return None;
+    }
+    let side = ["L", "R"][s];
+    let mapped: Vec<usize> = (1..=3)
+        .filter_map(|k| {
+            let name = format!("DEF-f_middle.0{k}.{side}");
+            info.map.node_of(&name).or_else(|| info.rig.find(&name))
+        })
+        .collect();
+    if mapped.len() >= 2 {
+        return Some(mapped);
+    }
+    let any_other = ["f_index", "f_ring", "f_pinky"].iter().any(|finger| {
+        (1..=2)
+            .filter_map(|k| info.map.node_of(&format!("DEF-{finger}.0{k}.{side}")))
+            .count()
+            >= 2
+    });
+    if any_other {
+        return None;
+    }
+    let hand = info.hand[s];
+    let skip = |n: &str| {
+        n.starts_with("Socket_") || n.starts_with("DEF-palm.") || crate::helpers::is_helper(n)
+    };
+    let mut found: Vec<Vec<usize>> = Vec::new();
+    for &c in &info.rig.children[hand] {
+        if skip(&info.rig.names[c]) {
+            continue;
+        }
+        let mut ch = vec![c];
+        while ch.len() < 3 {
+            let cur = *ch.last().unwrap();
+            let kids: Vec<usize> = info.rig.children[cur]
+                .iter()
+                .copied()
+                .filter(|&k| !skip(&info.rig.names[k]))
+                .collect();
+            if kids.len() != 1 {
+                break;
+            }
+            ch.push(kids[0]);
+        }
+        if ch.len() >= 2 {
+            found.push(ch);
+        }
+    }
+    (found.len() == 1).then(|| found.swap_remove(0))
+}
+
+/// Rest-world `(finger_dir, palm_normal, knuckle_line)` for a single
+/// unified finger chain `chain` (2 or 3 bones, knuckle first):
+/// - `finger_dir`: unit vector from `chain[0]` to `chain[1]`
+/// - `palm_normal`: unit vector perpendicular to `finger_dir` pointing out
+///   of the palm (from the chain's own rest curl when > ~3 deg, else the
+///   standing hand's anatomical palm for T-pose through arms-at-sides)
+/// - `knuckle_line`: unit vector from the little-finger edge toward the
+///   index/thumb edge.
+pub fn single_finger_axes(
+    rig: &Rig,
+    chain: &[usize],
+    right: bool,
+    fwd: Vec3,
+) -> Option<(Vec3, Vec3, Vec3)> {
+    if chain.len() < 2 {
+        return None;
+    }
+    let along = rig.head(chain[1]) - rig.head(chain[0]);
+    if along.length() < 1e-9 {
+        return None;
+    }
+    let fd = along.normalized();
+    let mut palm = None;
+    if chain.len() >= 3 {
+        let d1 = rig.head(chain[2]) - rig.head(chain[1]);
+        let d1_len = d1.length();
+        if d1_len > 1e-9 {
+            let perp = d1 - fd.scale(d1.dot(fd));
+            if perp.length() > 0.0523 * d1_len && d1.dot(fd) > 0.0 {
+                palm = Some(perp.normalized());
+            }
+        }
+    }
+    let palm = match palm {
+        Some(p) => p,
+        None => {
+            let fwd_p = fwd - fd.scale(fwd.dot(fd));
+            if fwd_p.length() > 0.2 {
+                let kn0 = fwd_p.normalized();
+                if right {
+                    kn0.cross(fd).normalized()
+                } else {
+                    fd.cross(kn0).normalized()
+                }
+            } else {
+                let down = Vec3::new(0.0, -1.0, 0.0);
+                let down_p = down - fd.scale(down.dot(fd));
+                if down_p.length() < 1e-9 {
+                    return None;
+                }
+                down_p.normalized()
+            }
+        }
+    };
+    let kn = if right {
+        fd.cross(palm).normalized()
+    } else {
+        palm.cross(fd).normalized()
+    };
+    Some((fd, palm, kn))
+}
+
 /// Where the handle sits in hand `s` (module doc); None on a hand with no
 /// finger bones. `unit` is GLB units per metre on a 2 m hero.
 pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
     let rig = &info.rig;
-    let (index, pinky, middle) = (
-        chain(info, "f_index", s)?,
-        chain(info, "f_pinky", s)?,
-        chain(info, "f_middle", s)?,
-    );
-    let (ki, kp) = (rig.head(index[0]), rig.head(pinky[0]));
-    let along = rig.head(middle[1]) - rig.head(middle[0]);
-    if along.length() < 1e-9 || (ki - kp).length() < 1e-9 {
-        return None;
-    }
-    let fd = along.normalized();
-    let kn = (ki - kp).normalized();
-    // The palm's side: the thumb's root sits on it, below the knuckle
-    // line. Without a thumb, where the middle finger's second joint goes
-    // when its first curls (a Rigify finger's curl axis; other rigs curl
-    // about other local axes, so the thumb comes first).
-    let mut palm = fd.cross(kn).normalized();
-    let toward = match chain(info, "thumb", s) {
-        Some(thumb) => rig.head(thumb[0]) - (ki + kp).scale(0.5),
-        None => {
-            let mut l: Vec<Option<Trs>> = vec![None; rig.names.len()];
-            l[middle[0]] = Some(bent(info, middle[0], 0.5));
-            rig.world(&l)[middle[1]].t - rig.head(middle[1])
+    if let (Some(index), Some(pinky), Some(middle)) = (
+        chain(info, "f_index", s),
+        chain(info, "f_pinky", s),
+        chain(info, "f_middle", s),
+    ) {
+        let (ki, kp) = (rig.head(index[0]), rig.head(pinky[0]));
+        let along = rig.head(middle[1]) - rig.head(middle[0]);
+        if along.length() < 1e-9 || (ki - kp).length() < 1e-9 {
+            return None;
         }
-    };
-    if toward.dot(palm) < 0.0 {
-        palm = palm.scale(-1.0);
+        let fd = along.normalized();
+        let kn = (ki - kp).normalized();
+        // The palm's side: the thumb's root sits on it, below the knuckle
+        // line. Without a thumb, where the middle finger's second joint goes
+        // when its first curls (a Rigify finger's curl axis; other rigs curl
+        // about other local axes, so the thumb comes first).
+        let mut palm = fd.cross(kn).normalized();
+        let toward = match chain(info, "thumb", s) {
+            Some(thumb) => rig.head(thumb[0]) - (ki + kp).scale(0.5),
+            None => {
+                let mut l: Vec<Option<Trs>> = vec![None; rig.names.len()];
+                l[middle[0]] = Some(bent(info, middle[0], 0.5));
+                rig.world(&l)[middle[1]].t - rig.head(middle[1])
+            }
+        };
+        if toward.dot(palm) < 0.0 {
+            palm = palm.scale(-1.0);
+        }
+        let centre = (ki + kp).scale(0.5)
+            + palm.scale((HANDLE_R + FINGER_R) * unit)
+            + fd.scale(DOWN_FINGERS * unit);
+        let blade = (kn + fd.scale(CANT)).normalized();
+        let edge = (fd - blade.scale(fd.dot(blade))).normalized();
+        let world = Quat::from_mat3(Mat3::from_cols(edge, blade, edge.cross(blade)));
+        let hw = rig.rest_world[info.hand[s]];
+        let inv = hw.rotation().conj();
+        return Some(PalmHold {
+            blade: inv.rotate_vec(blade),
+            grip: inv.rotate_vec(centre - hw.t),
+            socket: inv.mul(world).normalized(),
+        });
     }
-    let centre = (ki + kp).scale(0.5)
-        + palm.scale((HANDLE_R + FINGER_R) * unit)
-        + fd.scale(DOWN_FINGERS * unit);
+    let mid = single_chain(info, s)?;
+    let (fd, palm, kn) = single_finger_axes(rig, &mid, s == 1, info.fwd)?;
+    // When the hand bone already spans the palm and proximal phalanx (e.g.
+    // UniRig's long hand bone ending mid-finger), `mid[0]` is already in
+    // the grip pocket; when `mid[0]` sits at the knuckle, step `DOWN_FINGERS`
+    // down the finger so the first phalanx wraps over the handle.
+    let palm_len = (rig.head(mid[0]) - rig.head(info.hand[s])).length();
+    let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
+    let down = if finger_len > 1e-9 && palm_len > 2.2 * finger_len {
+        0.0
+    } else {
+        DOWN_FINGERS * unit
+    };
+    let centre = rig.head(mid[0]) + palm.scale((HANDLE_R + FINGER_R) * unit) + fd.scale(down);
     let blade = (kn + fd.scale(CANT)).normalized();
     let edge = (fd - blade.scale(fd.dot(blade))).normalized();
     let world = Quat::from_mat3(Mat3::from_cols(edge, blade, edge.cross(blade)));
@@ -198,6 +354,62 @@ pub fn fingers(
             hw.rotation().rotate_vec(h.blade),
         )
     });
+    if let Some(mid) = single_chain(info, s) {
+        if let Some((fd, palm, kn)) = single_finger_axes(rig, &mid, s == 1, info.fwd) {
+            let curl_axis = fd.cross(palm).normalized();
+            let bends: Vec<f64> = (0..mid.len())
+                .map(|k| fist(&rig.names[mid[k]]).unwrap_or(DEFAULT_FIST[1][k]))
+                .collect();
+            let pose = |c: f64| -> Vec<Option<Trs>> {
+                let mut l: Vec<Option<Trs>> = vec![None; rig.names.len()];
+                for k in 0..mid.len() {
+                    l[mid[k]] = Some(bent_world(info, mid[k], curl_axis, c * bends[k]));
+                }
+                l
+            };
+            let c = match (amount, handle) {
+                (Some(a), _) => a,
+                (None, None) => RELAXED,
+                (None, Some((on, dir))) => {
+                    let touch = (HANDLE_R + FINGER_R) * unit;
+                    let mut c = 0.0;
+                    let mut found = 1.0;
+                    while c <= 1.6 {
+                        let w = rig.world(&pose(c));
+                        let last = mid.len() - 1;
+                        let (p1, p2) = (w[mid[last - 1]].t, w[mid[last]].t);
+                        let tip = p2 + (p2 - p1).scale(0.8);
+                        let hit = [(p1, p2), (p2, tip)].iter().any(|(a, b)| {
+                            (0..=4).any(|k| line_dist(a.lerp(*b, k as f64 / 4.0), on, dir) <= touch)
+                        });
+                        if hit {
+                            found = c;
+                            break;
+                        }
+                        c += 0.02;
+                    }
+                    found
+                }
+            };
+            for k in 0..mid.len() {
+                out.push((mid[k], bent_world(info, mid[k], curl_axis, c * bends[k])));
+            }
+            if let Some(thumb) = chain(info, "thumb", s) {
+                let td = (rig.head(thumb[1]) - rig.head(thumb[0])).normalized();
+                // Thumb closes across the palm toward the opposite side (`-kn` + `palm`).
+                let toward = (palm - kn).normalized();
+                let t_axis = td.cross(toward);
+                if t_axis.length() > 1e-6 {
+                    let t_axis = t_axis.normalized();
+                    for (k, &jt) in thumb.iter().enumerate() {
+                        let b = fist(&rig.names[jt]).unwrap_or(DEFAULT_FIST[4][k]);
+                        out.push((jt, bent_world(info, jt, t_axis, c * b)));
+                    }
+                }
+            }
+            return out;
+        }
+    }
     for (fi, finger) in FINGERS.iter().enumerate() {
         let Some(joints) = chain(info, finger, s) else {
             continue;
@@ -321,5 +533,67 @@ mod tests {
         );
         assert!(parse_grips(text, "claw").is_err());
         assert!(parse_grips(r#""fist": { "R": { "x": 9.0 } }"#, "fist").is_err());
+    }
+
+    #[test]
+    fn single_finger_axes_match_anatomical_palm_and_rest_curl() {
+        use crate::glb::Affine;
+        let make = |pts: &[Vec3]| -> Rig {
+            let n = pts.len();
+            let rest = Trs {
+                t: Vec3::ZERO,
+                r: Quat::IDENTITY,
+                s: Vec3::new(1.0, 1.0, 1.0),
+            };
+            Rig {
+                names: (0..n).map(|i| format!("b{i}")).collect(),
+                parent: (0..n).map(|i| (i > 0).then_some(i - 1)).collect(),
+                children: (0..n)
+                    .map(|i| if i + 1 < n { vec![i + 1] } else { vec![] })
+                    .collect(),
+                rest: vec![rest; n],
+                rest_local: vec![Affine::IDENTITY; n],
+                rest_world: pts
+                    .iter()
+                    .map(|&p| Affine::from_trs(p, Quat::IDENTITY, Vec3::new(1.0, 1.0, 1.0)))
+                    .collect(),
+                skins: vec![(0..n).collect()],
+                order: (0..n).collect(),
+            }
+        };
+        let fwd = Vec3::new(0.0, 0.0, 1.0);
+        // Straight T-pose: right (-X) and left (+X) both put palm down (-Y)
+        // and knuckle line (pinky -> index/thumb) forward (+Z).
+        let r_tpose = make(&[
+            Vec3::new(-0.76, 1.45, 0.0),
+            Vec3::new(-0.80, 1.45, 0.0),
+            Vec3::new(-0.83, 1.45, 0.0),
+        ]);
+        let (fd, palm, kn) = single_finger_axes(&r_tpose, &[0, 1, 2], true, fwd).unwrap();
+        assert!(fd.approx_eq(Vec3::new(-1.0, 0.0, 0.0), 1e-9));
+        assert!(palm.approx_eq(Vec3::new(0.0, -1.0, 0.0), 1e-9));
+        assert!(kn.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
+
+        let l_tpose = make(&[
+            Vec3::new(0.76, 1.45, 0.0),
+            Vec3::new(0.80, 1.45, 0.0),
+            Vec3::new(0.83, 1.45, 0.0),
+        ]);
+        let (fd, palm, kn) = single_finger_axes(&l_tpose, &[0, 1, 2], false, fwd).unwrap();
+        assert!(fd.approx_eq(Vec3::new(1.0, 0.0, 0.0), 1e-9));
+        assert!(palm.approx_eq(Vec3::new(0.0, -1.0, 0.0), 1e-9));
+        assert!(kn.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
+
+        // Arms hanging at sides with a slight inward rest curl (+X on R, -X on L):
+        // rest curl and anatomical forward give the exact same palm and knuckle line.
+        let r_hang = make(&[
+            Vec3::new(-0.42, 0.80, 0.0),
+            Vec3::new(-0.42, 0.78, 0.0),
+            Vec3::new(-0.41, 0.75, 0.0),
+        ]);
+        let (fd, palm, kn) = single_finger_axes(&r_hang, &[0, 1, 2], true, fwd).unwrap();
+        assert!(fd.approx_eq(Vec3::new(0.0, -1.0, 0.0), 1e-9));
+        assert!(palm.approx_eq(Vec3::new(1.0, 0.0, 0.0), 1e-9));
+        assert!(kn.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
     }
 }

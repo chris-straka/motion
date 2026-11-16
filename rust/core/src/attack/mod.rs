@@ -1067,13 +1067,16 @@ pub fn build(
     let name = name.unwrap_or(&spec.name).to_string();
     report.name = name.clone();
     let mut out = doc.clone();
-    let mut nodes = info.rig.joints();
-    nodes.sort_unstable();
-    nodes.dedup();
     // The hand socket holds the sword where the hand does (`grip.rs`): its
     // origin at the grip's middle, +Y along the blade, so a sword hung on
     // it with no offset sits in the fist.
     let solver = Solver::new(&info, spec)?;
+    let mut nodes = info.rig.joints();
+    for &(n, _) in solver.grip_fingers.iter().chain(&solver.free_fingers) {
+        nodes.push(n);
+    }
+    nodes.sort_unstable();
+    nodes.dedup();
     if let (Some(ph), Some(sock)) = (solver.palm, info.socket[spec.side]) {
         let hw = info.rig.rest_world[info.hand[spec.side]];
         let world = hw.t + hw.rotation().rotate_vec(ph.grip);
