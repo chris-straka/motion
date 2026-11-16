@@ -214,6 +214,19 @@ and a giant and numbers compare across characters.
   measured on the joints and judged close up, not from the
   silhouette.
 
+  **2026-11-16 (single-finger / mitten grip fix)**: unified three-bone
+  finger chains (`Finger1..3_L/R` and variants) now map onto
+  `DEF-f_middle.01..03` in `humanoid::map_rig`, `motionforge socket`
+  places palm sockets on them, and `attack` curls the chain about the
+  hand's world palm curl axis (`attack/grip.rs`). On the single-finger
+  hero rig in the owner's corpus (`motionforge attack --preset all`
+  followed by `motionforge motion check --camera game --blade-pose
+  socket --no-through`), the grip moves from `0` (`18.7 cm / 0 deg`) to
+  **`1.00 (2.6 cm / 47 deg)`** across all four presets (`sweep` overall
+  `0.00 -> 0.50`, `cleave` `0.00 -> 0.43`, `backcut` `0.00 -> 0.41`,
+  `thrust` `0.00 -> 0.06`), while the five-finger reference control stays
+  byte-identical (`0.97`, `3.8 cm / 34 deg`).
+
 Clips are sampled at 30 fps whatever rate they were keyed at (`--fps`
 to change), the rate the renders use, so frame numbers match the
 pictures. Output is deterministic.

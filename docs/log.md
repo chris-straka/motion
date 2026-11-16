@@ -580,3 +580,30 @@ the same; the grip pair at game-camera distance was called the
 wrong way, because from behind the fingers sit on the handle's far
 side. `READ_FULL` unchanged. `keypose` now picks its carry by the
 silhouette alone, since a carry changes timing, not grip.
+
+## 2026-11-16: unified single-finger / mitten chains map, hold a palm socket, and close on the hilt
+
+Rigs with one unified finger chain per hand (`Finger1..3_L/R` and
+variants) were left unmapped by `humanoid::map_rig`, which merged their
+skin weights into the hand during `standardize`, caused `motionforge
+socket` to place nothing, and left `motionforge attack` on the wrist
+fallback (`18.7 cm` off the knuckle, `0 deg` finger curl).
+
+- `humanoid::map_rig` maps a hand's single 2+-bone generic finger/mitten
+  chain onto `DEF-f_middle.01..03` when no five-finger chains exist
+  (leaving 1-bone sibling stubs and five-finger `Bip01 Finger0..4` hands
+  untouched).
+- `attack::grip` (`palm_hold`, `place_sockets`, `fingers`) derives the
+  palm normal and knuckle line for a single-finger chain (from its rest
+  inward curl when > 3 deg, else the standing anatomical palm) and curls
+  each segment about the world `finger x palm` axis in the joint's local
+  frame rather than assuming Rigify's local `+X`. Unskinned child finger
+  chains under `DEF-hand` are also keyed by `attack::build`.
+- `animate` aligns leaf finger segments (`.02`/`.03`) with their parent
+  segment and aligns hand roll on single-finger targets against
+  five-finger sources.
+- Measured on the single-finger hero rig in the owner's corpus (`motion
+  check --camera game --blade-pose socket --no-through`): grip `0 (18.7
+  cm, 0 deg)` -> `1.00 (2.6 cm, 47.3 deg)`; authored `sweep / cleave /
+  backcut` overall `0.00 -> 0.50 / 0.43 / 0.41`; five-finger positive
+  control unchanged (`0.97`, `3.8 cm, 33.8 deg`).

@@ -140,6 +140,21 @@ so a sword hung on it with no offset sits in the fist (`motion check
 keeps the game's hold and its socket (test). The free hand curls 0.35
 of a fist, 0.85 on the hilt.
 
+**Unified single-finger / mitten chains** (2026-11-16, `humanoid.rs` and
+`attack/grip.rs`). Rigs with one three-bone finger chain per hand
+(`Finger1..3_L/R`, `Mitten_01..03_L/R`, etc.) map that chain onto
+`DEF-f_middle.01..03` when no separate five-finger bones exist, keeping
+its vertex weights through `standardize`. `palm_hold` and `place_sockets`
+find the palm normal from the chain's rest inward curl (else the
+standing anatomical palm) and curl every segment about the world
+`finger x palm` axis transformed into each joint's local frame, so the
+hand closes into the palm regardless of how the rigger rolled the
+joint's local axes. On the single-finger hero rig in the owner's corpus,
+`motionforge socket` places `Socket_Hand_L/R` in the palms and authored
+`sweep` / `cleave` / `backcut` (`--blade-pose socket`) move from grip
+`0` (`18.7 cm` handle, `0 deg` curl) to grip `1.00` (`2.6 cm` handle,
+`47.3 deg` curl), scoring `0.50 / 0.43 / 0.41` overall.
+
 **Weight: the hips lead, the blade lags, then snaps.** Each move's keys
 are reached on three clocks: the hips (and feet) finish 35% early, the
 chest 20% early, the sword starts 20% late and catches up; all land on
