@@ -807,3 +807,120 @@ fn standardize_preserves_single_finger_chain_and_places_palm_sockets() {
         assert!(world_sockets[0][s].1.approx_eq(world_sockets[1][s].1, 1e-6));
     }
 }
+
+#[test]
+fn standardize_preserves_existing_arm_and_forearm_twist_helpers_and_drives_them() {
+    let mut src = humanoid(Naming::Plain, false, false).unwrap();
+    let rig0 = Rig::from_doc(&src).unwrap();
+    let mut added_nodes = Vec::new();
+    for side in ["L", "R"] {
+        let clav = rig0.find(&format!("Clavicle_{side}")).unwrap();
+        let up = rig0.find(&format!("UpperArm_{side}")).unwrap();
+        let fo = rig0.find(&format!("Forearm_{side}")).unwrap();
+        let ha = rig0.find(&format!("Hand_{side}")).unwrap();
+        let (ut_t, ut_r, ut_s) = motion_core::glb::node_trs(&src.array("nodes")[up]);
+        let mut ut_node = Json::obj(vec![("name", Json::str(&format!("UpperArmTwist_{side}")))]);
+        motion_core::glb::set_node_trs(&mut ut_node, ut_t, ut_r, ut_s);
+        let (ha_t, _, _) = motion_core::glb::node_trs(&src.array("nodes")[ha]);
+        let mut ft_node = Json::obj(vec![("name", Json::str(&format!("ForearmTwist_{side}")))]);
+        motion_core::glb::set_node_trs(
+            &mut ft_node,
+            ha_t.scale(0.5),
+            motion_core::math::Quat::IDENTITY,
+            Vec3::new(1.0, 1.0, 1.0),
+        );
+        let nodes = src.array_mut("nodes");
+        let ut_idx = nodes.len();
+        nodes.push(ut_node);
+        let ft_idx = nodes.len();
+        nodes.push(ft_node);
+        for (parent, child) in [(clav, ut_idx), (fo, ft_idx)] {
+            let mut kids = nodes[parent]
+                .get("children")
+                .and_then(Json::as_arr)
+                .map(|a| a.to_vec())
+                .unwrap_or_default();
+            kids.push(Json::num(child as f64));
+            nodes[parent].set("children", Json::Arr(kids));
+        }
+        added_nodes.push((ut_idx, up));
+        added_nodes.push((ft_idx, fo));
+    }
+    // Add the four twist bones to skins[0] so standardize treats them as weighted joints.
+    let ibm_acc = src.array("skins")[0]
+        .get("inverseBindMatrices")
+        .unwrap()
+        .as_usize()
+        .unwrap();
+    let mut ibm = src.read_accessor(ibm_acc).unwrap();
+    let mut skin_joints: Vec<usize> = src.array("skins")[0]
+        .get("joints")
+        .unwrap()
+        .as_arr()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_usize().unwrap())
+        .collect();
+    for (twist_idx, ref_idx) in added_nodes {
+        let pos = skin_joints.iter().position(|&j| j == ref_idx).unwrap();
+        let row = ibm[pos].clone();
+        skin_joints.push(twist_idx);
+        ibm.push(row);
+    }
+    let new_ibm = src.push_float_accessor(&ibm, "MAT4", false);
+    let skins = src.array_mut("skins");
+    skins[0].set(
+        "joints",
+        Json::Arr(skin_joints.iter().map(|&j| Json::num(j as f64)).collect()),
+    );
+    skins[0].set("inverseBindMatrices", Json::num(new_ibm as f64));
+
+    let (out, report) = done(standardize(&src, "humanoid").unwrap());
+    // Neither UpperArmTwist nor ForearmTwist is dropped/merged, and only the
+    // two missing thigh_twist helpers are auto-inserted (no duplicate upper_arm_twist).
+    assert!(
+        !report.merged.iter().any(|(from, _)| from.contains("Twist")),
+        "twist bone merged: {:?}",
+        report.merged
+    );
+    assert_eq!(
+        report.helpers,
+        vec![
+            "DEF-thigh_twist.L".to_string(),
+            "DEF-thigh_twist.R".to_string()
+        ]
+    );
+    let rig = Rig::from_doc(&out).unwrap();
+    let fo = rig.find("DEF-forearm.R").unwrap();
+    let ft = rig.find("DEF-forearm_twist.R").unwrap();
+    let ha = rig.find("DEF-hand.R").unwrap();
+    assert_eq!(rig.parent[ft], Some(fo));
+
+    // Twist DEF-hand.R by 60 deg about the forearm axis + 20 deg wrist bend:
+    // DEF-forearm_twist.R takes half the twist (~30 deg) and none of the bend.
+    let axis_f = (rig.rest[ha].t).normalized();
+    let perp = if axis_f.x.abs() < 0.9 {
+        axis_f.cross(Vec3::new(1.0, 0.0, 0.0)).normalized()
+    } else {
+        axis_f.cross(Vec3::new(0.0, 1.0, 0.0)).normalized()
+    };
+    let mut locals = vec![None; rig.names.len()];
+    let mut hl = rig.rest[ha];
+    hl.r = motion_core::math::Quat::from_axis_angle(perp, 20.0f64.to_radians())
+        .mul(motion_core::math::Quat::from_axis_angle(
+            axis_f,
+            60.0f64.to_radians(),
+        ))
+        .mul(hl.r)
+        .normalized();
+    locals[ha] = Some(hl);
+    motion_core::helpers::drive(&rig, &mut locals);
+    let ft_delta = locals[ft].unwrap().r.mul(rig.rest[ft].r.conj());
+    let ft_deg = ft_delta
+        .angle_to(motion_core::math::Quat::IDENTITY)
+        .to_degrees();
+    assert!(
+        (ft_deg - 30.0).abs() < 1.0,
+        "expected ~30 deg forearm twist share, got {ft_deg}"
+    );
+}

@@ -402,3 +402,97 @@ fn authored_sweep_on_mitten_humanoid_passes_grip_and_open_hand_fails() {
     assert!(open_rc.grip.score < 0.05, "{:?}", open_rc.grip);
     assert!(open_rc.score < 0.05, "{open_rc:?}");
 }
+
+#[test]
+fn distal_mitten_places_socket_in_palm_pocket_and_rejects_fingertip_socket() {
+    use motion_core::attack::{build, parse_spec, preset};
+    use motion_core::fixture::humanoid_mitten;
+    use motion_core::glb::{node_trs, set_node_trs};
+    use motion_core::motioncheck::sample;
+    use motion_core::readcam::BladePose;
+    use motion_core::rig::{Animation, Rig};
+
+    // Build a distal-tip mitten rig where Hand -> Finger1 (0.184 m) is over
+    // 3x Finger1 -> Finger3 (0.048 m), plus a sideways rest kink on Finger2.
+    let raw = humanoid_mitten(Naming::Plain, false, 0.0).unwrap();
+    let mut base_doc = match standardize(&raw, "humanoid").unwrap() {
+        Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+        Outcome::Refused(_, why) => panic!("{why}"),
+    };
+    let rig0 = Rig::from_doc(&base_doc).unwrap();
+    for (side, sign) in [("L", 1.0), ("R", -1.0)] {
+        let f1 = rig0.find(&format!("DEF-f_middle.01.{side}")).unwrap();
+        let f2 = rig0.find(&format!("DEF-f_middle.02.{side}")).unwrap();
+        let f3 = rig0.find(&format!("DEF-f_middle.03.{side}")).unwrap();
+        let (_, r1, s1) = node_trs(&base_doc.array("nodes")[f1]);
+        set_node_trs(
+            &mut base_doc.array_mut("nodes")[f1],
+            Vec3::new(sign * 0.184, 0.0, 0.0),
+            r1,
+            s1,
+        );
+        let (_, r2, s2) = node_trs(&base_doc.array("nodes")[f2]);
+        set_node_trs(
+            &mut base_doc.array_mut("nodes")[f2],
+            Vec3::new(sign * 0.024, 0.0, 0.0),
+            r2,
+            s2,
+        );
+        let (_, r3, s3) = node_trs(&base_doc.array("nodes")[f3]);
+        // Sideways +Z kink on Finger3 must not roll the blade or crush the tip.
+        set_node_trs(
+            &mut base_doc.array_mut("nodes")[f3],
+            Vec3::new(sign * 0.024, 0.0, 0.009),
+            r3,
+            s3,
+        );
+    }
+    let spec = parse_spec(preset("sweep").unwrap()).unwrap();
+    let (palm_doc, _) = build(&base_doc, &spec, None).unwrap();
+    let palm_doc = Document::parse(&palm_doc.to_bytes().unwrap()).unwrap();
+    let rig_p = Rig::from_doc(&palm_doc).unwrap();
+    let hand_r = rig_p.find("DEF-hand.R").unwrap();
+    let f1_r = rig_p.find("DEF-f_middle.01.R").unwrap();
+    let sock_r = rig_p.find("Socket_Hand_R").unwrap();
+    let wrist_to_sock = (rig_p.rest_world[sock_r].t - rig_p.head(hand_r)).length();
+    let f1_to_sock = (rig_p.rest_world[sock_r].t - rig_p.head(f1_r)).length();
+    // Anchored in the palm (~0.10 m from wrist), well behind the distal fingertips (0.184 m).
+    assert!(
+        wrist_to_sock > 0.08 && wrist_to_sock < 0.13 && f1_to_sock > 0.07,
+        "wrist_to_sock={wrist_to_sock}, f1_to_sock={f1_to_sock}"
+    );
+
+    let mut cam_opts = CamOptions::default();
+    cam_opts.blade_pose = BladePose::Socket;
+    let subj = Subject::new(&palm_doc, &Options::default()).unwrap();
+    let stage = Stage::new(&palm_doc, &subj, &cam_opts).unwrap();
+    let anim = &Animation::load_all(&palm_doc).unwrap()[0];
+    let (times, frames) = sample(&subj.rig, anim, None);
+    let dt = (times[times.len() - 1] - times[0]) / (times.len() - 1) as f64;
+    let (rc, _) = stage.read(&subj.rig, &frames, dt, &frames[0]);
+    assert!(rc.grip.handle_m < 0.045, "{:?}", rc.grip);
+    assert!(
+        rc.grip.curl_deg > 20.0 && rc.grip.curl_deg < 36.0,
+        "distal mitten curl should be gentle, got {:?}",
+        rc.grip
+    );
+    assert!((rc.grip.score - 1.0).abs() < 1e-9, "{:?}", rc.grip);
+
+    // Floating the socket out at Finger1 (the distal fingertips) must fail the grip check.
+    let mut tip_doc = palm_doc.clone();
+    let (_, sr, ss) = node_trs(&tip_doc.array("nodes")[sock_r]);
+    set_node_trs(
+        &mut tip_doc.array_mut("nodes")[sock_r],
+        Vec3::new(-0.184, -0.026, 0.0),
+        sr,
+        ss,
+    );
+    let tip_subj = Subject::new(&tip_doc, &Options::default()).unwrap();
+    let tip_stage = Stage::new(&tip_doc, &tip_subj, &cam_opts).unwrap();
+    let (tip_rc, _) = tip_stage.read(&tip_subj.rig, &frames, dt, &frames[0]);
+    assert!(
+        tip_rc.grip.handle_m > 0.08 && tip_rc.grip.score < 0.5,
+        "fingertip socket must fail grip check: {:?}",
+        tip_rc.grip
+    );
+}

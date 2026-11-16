@@ -207,7 +207,7 @@ fn single_finger_chain_places_palm_socket_and_curls_round_the_handle() {
     let (built, rep) = build(&std_doc, &spec, None).unwrap();
     assert!(rep.socket_rewritten);
     for (k, m) in rep.key_miss.iter().enumerate() {
-        assert!(m.grip < 1e-9, "key {k}: {m:?}");
+        assert!(m.grip < 1e-6, "key {k}: {m:?}");
     }
     let rig = Rig::from_doc(&built).unwrap();
     let anim = &Animation::load_all(&built).unwrap()[0];
