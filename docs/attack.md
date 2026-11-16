@@ -110,7 +110,12 @@ Where the numbers fall short:
   shoulder (11 frames, 9 cm), and its grip is 2% short of two keys.
 - The back ankle in **cleave** is past its limit for 11 frames (the leg
   stretched out behind over a flat foot).
-- The readability score is not yet checked against the owner's own picks.
+- The readability score is not yet checked against the owner's own
+  picks. (2026-11-15: it is now checked against a blind judge and
+  the game's own clips, and it follows the root, counts only the
+  visible blade, combines by the weakest part and judges the grip:
+  `docs/motion-check.md`. On the game's rig these presets read
+  0.42-0.49 and fail the grip at the wrist, as the owner said.)
 
 ## Round 2 (2026-11-13): the grip, weight, phone clips
 

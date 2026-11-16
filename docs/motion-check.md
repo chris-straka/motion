@@ -132,11 +132,87 @@ and a giant and numbers compare across characters.
   - *load hold*: the longest run of frames in the second before the peak
     whose silhouette changes under 4% from the frame before.
   - *score*: each part over what the readable references reach (body
-    0.7, sweep 0.8, arc 2.0, hold 4 frames), capped at 1, averaged; the
-    hold counts only as far as the arc reads (idle holds still all
-    clip long).
+    0.7, sweep 0.8, arc 2.0, hold 4 frames), capped at 1, combined by
+    the weakest part; the hold is a bonus of at most a fifth on top
+    of that, only as far as the arc reads (idle holds still all clip
+    long, and the readable references include attacks with no held
+    load, so a hold cannot be required).
   `--silhouettes DIR` writes each frame's mask as a PGM (body black,
   blade grey).
+
+  Three fixes and a new part (2026-11-15), each because the old
+  number disagreed with the pictures:
+
+  - **The camera follows the root.** It used to sit where the clip
+    started, so a lunging attack walked out of its own framing while
+    the renders (which follow) showed it framed. Now the hips' floor
+    path, smoothed over 9 frames once he travels 0.25 m, translates
+    the camera — the renderer's own rule (`motion_video_render.py`
+    `root_path`) — so the measure and the picture frame the same move.
+  - **Only the visible blade counts.** Body pixels carry depth; a
+    blade pixel behind the body (past 2 cm for the fist round the
+    guard) is culled from the sweep and the pose change, and a tip
+    behind the body or off screen makes no arc. A blade swung behind
+    his back used to sweep as much as one swung across the camera.
+  - **Combined by the weaker part.** The average let a wide sweep
+    pay for a body that never moved — the attack the owner could
+    not read scored 0.42 while only its arm crossed its chest. The
+    score is now the weakest of body, sweep and arc (the hold's
+    bonus aside), and the grip caps it the same way.
+  - **Grip** (`grip` in the JSON, when the rig holds a blade): over
+    load to settle, the handle's middle against the palm (the mean
+    finger root, else the hand joint; a palm grip puts it about
+    3.3 cm off the knuckle line, the good bound is 4.5 cm and
+    11.5 cm is not in the hand), the fingers' mean turn from rest
+    (each joint's rotation against its parent, now against rest —
+    by joint positions a rig that rests with curved fingers reads
+    half a fist with its fingers open), and the fingertips'
+    distance to the handle's line (reported). Score: the weaker of
+    handle-in-palm and fingers-closed; `ok` at 0.5. Finger chains
+    come from the name mapper, else the hand's own child chains
+    (the game rig's single three-bone finger); with no measurable
+    fingers the handle alone is judged and `fingers` says so.
+
+  **Calibrated on the game's own clips** (2026-11-15;
+  `motionforge motion check andras_rig.glb --camera game
+  --no-through --json` on the rig in `~/Games/hlh/player/andras`,
+  plus the authored presets on the same rig, and a positive grip
+  control on Lysan's rig, whose fingers the authoring tool can
+  close; `READ_FULL` unchanged — the new parts still reach them):
+
+  | clip | read | body | sweep | arc | grip (handle / curl) |
+  |---|---|---|---|---|---|
+  | quirin-attack_2 | 0.72 | 0.63 | 0.82 | 2.83 | 0 (18.7 cm / 0 deg) |
+  | authored sweep | 0.49 | 0.64 | 0.44 | 2.29 | 0 (18.7 cm / 0 deg) |
+  | authored cleave / backcut | 0.43 / 0.42 | 0.75 / 0.69 | 0.39 / 0.37 | 1.82 / 1.74 | 0 (18.7 cm / 0 deg) |
+  | attack_3 / attack_2 / attack_1 | 0.33 / 0.31 / 0.30 | 0.39 / 0.27 / 0.26 | 0.33 / 0.45 / 0.37 | 1.96 / 1.67 / 1.28 | 0 (18.7 cm / 0 deg) |
+  | enemy-attack_3 | 0.15 | 0.33 | 0.25 | 0.37 | 0 (18.7 cm / 0 deg) |
+  | authored thrust | 0.03 | 0.60 | 0.13 | 0.08 | 0 (18.7 cm / 0 deg) |
+  | idle | 0.01 | 0.06 | 0.01 | 0.03 | 0 (18.7 cm / 0 deg) |
+  | Lysan authored sweep (socket pose) | 0.55 | 0.71 | 0.49 | 2.29 | **0.97 (3.8 cm / 34 deg)** |
+  | the same, fingers left open | 0.55 | 0.71 | 0.49 | 2.29 | **0.34 (3.8 cm / 12 deg)** |
+  | the same, blade in the game's pose | 0.56 | 0.71 | 0.50 | 2.46 | **0 (12.1 cm / 34 deg)** |
+
+  Read: the ordering the owner gave holds (the authored and Quirin
+  attacks over Andras's, over idle), and every sword clip on
+  Andras's own rig fails the grip at the same place — with the
+  game's held pose the handle's middle sits 18.7 cm from the
+  knuckle, at the wrist, on all 31 clips, and no finger joint ever
+  turns. The authored attacks read clearly on the same rig and
+  fail the grip identically, which is the owner's "reads clearly
+  but the grip is wrong" as a number. The thrust reads 0.03 from
+  behind by design of the measure: its blade points away and its
+  tip is behind the body, so it reads by the lunge the body part
+  (0.60) records; an attack for this camera should cut across it
+  (`docs/attack.md`). A blind side-by-side judge (same-frame
+  strips at the game camera; the judge saw only the pictures)
+  picked the authored sweep over attack_1 for readability and the
+  closed over the open hand at the hand camera, and called the
+  identical-frame control "same"; at game-camera distance it
+  called the grip pair the wrong way — from behind, the fingers
+  are on the far side of the handle, which is why the grip is
+  measured on the joints and judged close up, not from the
+  silhouette.
 
 Clips are sampled at 30 fps whatever rate they were keyed at (`--fps`
 to change), the rate the renders use, so frame numbers match the
@@ -155,6 +231,21 @@ turn, a zigzag of eight equal turns has consistency 0, a straight cut 1;
 the strike timing on the synthetic swing below; on the fixture
 humanoid, standing still has no pose or body change and no arc, an arm
 swung up 150 deg reads higher, the same twice byte for byte.
+
+2026-11-15 additions: the follow offsets of a still clip, a 0.2 m
+step, a 1.9 m walk and a jump (only the walk's camera moves, it starts
+at zero and never runs back); a blade ribbon behind a body triangle
+counts no pixels and in front all of them; the weakest-part score
+(full body and arc with no sweep is 0, where the average paid 0.375;
+a held load lifts half parts from 0.40 to 0.45); the grip on known
+hands (a straight finger turns 0 and holds nothing, a joint turned
+90 deg from rest is a full curl, a handle 12 cm off the palm fails
+however curled, no fingers judges the handle alone); and a lunging
+arm keeps its mask (IoU over 0.9 mid-lunge) under the followed
+camera. On the fixture's standardized socket the game's held pose
+puts the handle 12 cm off its one finger root, so its raised arm's
+overall score is capped at 0 while its silhouette reads — pinned as
+the grip working, not a silhouette failure.
 
 2026-11-13 additions: back-and-forth on the same +-0.02 rad forearm
 jitter is exactly `4 L sin(theta)` at its peak (half that as the chain

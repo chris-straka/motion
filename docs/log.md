@@ -547,3 +547,36 @@ hand (21.5 on the lead-hand knife stab).
   with a 32 deg wrist offset (0.85 ahead as it is).
 - Two are clips we had: Stable Sword Inward Slash is Inward Slashing,
   Sword And Shield High Attack is High Attack.
+
+## 2026-11-15: the readability check follows, sees, and holds
+
+The audit's four faults in `motion check --camera game`, fixed in
+`readcam.rs` (numbers and the calibration table in
+`docs/motion-check.md`):
+
+- The camera sat where the clip started while the renders follow the
+  root; it now follows the hips' smoothed floor path (the renderer's
+  numbers), so a lunge is measured in the framing the owner sees.
+- The blade counted where the body hid it; body depth now culls it
+  from the sweep, the pose change and the tip path.
+- The parts were averaged, so a sweep could pay for a still body;
+  they now combine by the weakest, a held load is a bonus of at most
+  a fifth, and the new grip caps the score the same way.
+- Nothing measured the grip. Over the strike: the handle's middle
+  against the palm, the finger joints' turn from rest, the
+  fingertips to the handle's line. On the game's own rig every
+  sword clip fails it at the wrist (handle 18.7 cm off the knuckle,
+  no finger ever turns), the authored attacks included — the
+  owner's "reads clearly but the grip is wrong", measured. On
+  Lysan's rig the authored grip passes (3.8 cm, 34 deg a joint,
+  0.97), the same attack with the fingers left open fails on curl
+  (12 deg, 0.34), and the game's blade pose on her palm socket
+  fails on the handle (12.1 cm, 0).
+
+Judged blind at the game camera (same-frame strips, the judge saw
+only pictures): the authored sweep picked over attack_1, the closed
+hand over the open at the hand camera, the identical control called
+the same; the grip pair at game-camera distance was called the
+wrong way, because from behind the fingers sit on the handle's far
+side. `READ_FULL` unchanged. `keypose` now picks its carry by the
+silhouette alone, since a carry changes timing, not grip.
