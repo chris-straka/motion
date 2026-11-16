@@ -591,16 +591,24 @@ pub const GRIP_HANDLE_BAD_M: f64 = 0.115;
 /// joint roughly 30-60 deg from rest (`attack::grip`'s fist table);
 /// a hand the clip never closes turns 0.
 pub const GRIP_CURL_FULL_DEG: f64 = 35.0;
+/// Mean finger turn of a closed distal-tip mitten chain (`palm_len > 2 *
+/// finger_len`), where wrapping past ~25 deg per joint crushes the short
+/// fused tip into itself.
+pub const GRIP_MITTEN_CURL_FULL_DEG: f64 = 20.0;
 
 /// The grip's score from the handle's distance to the palm and the
 /// fingers' bend (`None` when the rig has no measurable fingers: the
 /// handle alone is judged, and `GripScore::fingers` says so). Each
 /// part 0..1, combined by the weaker.
 pub fn grip_of(handle_m: f64, curl_deg: Option<f64>) -> f64 {
+    grip_of_full(handle_m, curl_deg, GRIP_CURL_FULL_DEG)
+}
+
+fn grip_of_full(handle_m: f64, curl_deg: Option<f64>, full_deg: f64) -> f64 {
     let handle = (1.0 - (handle_m - GRIP_HANDLE_GOOD_M) / (GRIP_HANDLE_BAD_M - GRIP_HANDLE_GOOD_M))
         .clamp(0.0, 1.0);
     match curl_deg {
-        Some(c) => handle.min((c / GRIP_CURL_FULL_DEG).clamp(0.0, 1.0)),
+        Some(c) => handle.min((c / full_deg).clamp(0.0, 1.0)),
         None => handle,
     }
 }
@@ -829,10 +837,11 @@ pub struct Stage {
     /// Guard distance from the grip, metres (the handle's middle is
     /// the guard backed off by this along the blade).
     from_m: f64,
-    /// Finger roots (the palm) and chains (hand first) of the weapon
-    /// hand, for the grip.
-    finger_roots: Vec<usize>,
+    /// Finger roots `(node, share_from_hand)` defining the palm pocket and
+    /// chains (hand first) of the weapon hand, for the grip.
+    palm_roots: Vec<(usize, f64)>,
     finger_chains: Vec<Vec<usize>>,
+    distal_mitten: bool,
 }
 
 /// How far he must travel across the floor (metres at the game's
@@ -898,9 +907,18 @@ impl Stage {
         // found them, else the hand's own child chains (a single
         // three-bone finger, as the game's rig has). Palm bones and
         // the socket are not fingers.
-        let mut finger_roots: Vec<usize> = Vec::new();
+        let mut palm_roots: Vec<(usize, f64)> = Vec::new();
         let mut finger_chains: Vec<Vec<usize>> = Vec::new();
         if let Some(h) = hand {
+            let root_share = |c0: usize, c_last: usize| -> f64 {
+                let palm_len = (subject.rig.head(c0) - subject.rig.head(h)).length();
+                let finger_len = (subject.rig.head(c_last) - subject.rig.head(c0)).length();
+                if finger_len > 1e-9 && palm_len > 2.0 * finger_len {
+                    crate::attack::grip::DISTAL_MITTEN_PALM_SHARE
+                } else {
+                    1.0
+                }
+            };
             for finger in ["f_index", "f_middle", "f_ring", "f_pinky", "thumb"] {
                 let chain: Vec<usize> = (1..=3)
                     .filter_map(|seg| {
@@ -910,17 +928,23 @@ impl Stage {
                     })
                     .collect();
                 if chain.len() >= 2 {
-                    finger_roots.push(chain[0]);
+                    let sh = root_share(chain[0], *chain.last().unwrap());
+                    palm_roots.push((chain[0], sh));
                     let mut full = vec![h];
                     full.extend(chain);
                     finger_chains.push(full);
                 } else if let Some(&root) = chain.first() {
-                    finger_roots.push(root);
+                    palm_roots.push((root, 1.0));
                 }
             }
             if finger_chains.is_empty() {
+                let skip = |n: &str| {
+                    n.starts_with("Socket_")
+                        || n.starts_with("DEF-palm.")
+                        || crate::helpers::is_helper(n)
+                };
                 for &c in &subject.rig.children[h] {
-                    if subject.rig.names[c].starts_with("Socket_") {
+                    if skip(&subject.rig.names[c]) {
                         continue;
                     }
                     let mut chain = vec![h, c];
@@ -929,7 +953,7 @@ impl Stage {
                         let next = subject.rig.children[cur]
                             .iter()
                             .copied()
-                            .find(|&k| !subject.rig.names[k].starts_with("Socket_"));
+                            .find(|&k| !skip(&subject.rig.names[k]));
                         match next {
                             Some(k) => {
                                 chain.push(k);
@@ -939,12 +963,14 @@ impl Stage {
                         }
                     }
                     if chain.len() >= 3 {
-                        finger_roots.push(c);
+                        let sh = root_share(c, *chain.last().unwrap());
+                        palm_roots.push((c, sh));
                         finger_chains.push(chain);
                     }
                 }
             }
         }
+        let distal_mitten = !palm_roots.is_empty() && palm_roots.iter().all(|(_, sh)| *sh < 1.0);
         Ok(Stage {
             cam: Camera::game(subject.forward(), opts, unit),
             unit,
@@ -955,8 +981,9 @@ impl Stage {
             blade: blade_local(opts, unit),
             width: opts.blade_width_m * unit,
             from_m: opts.blade_from_m,
-            finger_roots,
+            palm_roots,
             finger_chains,
+            distal_mitten,
         })
     }
 
@@ -1176,13 +1203,15 @@ impl Stage {
                 }
                 let dir = blade_vec.normalized();
                 let grip = guard - dir.scale(self.from_m * self.unit);
-                let palm = if self.finger_roots.is_empty() {
+                let palm = if self.palm_roots.is_empty() {
                     hand_p[f]
                 } else {
-                    self.finger_roots
+                    self.palm_roots
                         .iter()
-                        .fold(Vec3::ZERO, |s, &r| s + world[f][r].t)
-                        .scale(1.0 / self.finger_roots.len() as f64)
+                        .fold(Vec3::ZERO, |s, &(r, sh)| {
+                            s + hand_p[f].lerp(world[f][r].t, sh)
+                        })
+                        .scale(1.0 / self.palm_roots.len() as f64)
                 };
                 let chains: Vec<Vec<Vec3>> = self
                     .finger_chains
@@ -1202,8 +1231,13 @@ impl Stage {
             } else {
                 Some(curls.iter().sum::<f64>() / curls.len() as f64)
             };
+            let full_deg = if self.distal_mitten {
+                GRIP_MITTEN_CURL_FULL_DEG
+            } else {
+                GRIP_CURL_FULL_DEG
+            };
             out.grip = GripScore {
-                score: grip_of(median(&handles), curl),
+                score: grip_of_full(median(&handles), curl, full_deg),
                 handle_m: median(&handles),
                 axis_m: median(&axes),
                 curl_deg: curl.unwrap_or(0.0),

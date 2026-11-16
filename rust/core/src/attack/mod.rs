@@ -57,8 +57,11 @@ const UP: Vec3 = Vec3 {
 };
 /// The props kit's sword: tip 0.91 m from the grip's middle on a 2 m hero.
 pub const BLADE_HEIGHTS: f64 = 0.91 / 2.0;
-/// The hand may turn this far from its forearm, degrees.
+/// The hand may turn this far from its forearm, degrees (fingerless sockets;
+/// hands with skinned fingers use `PALM_WRIST_MAX_DEG` so the wrist seam
+/// never kinks).
 pub const WRIST_MAX_DEG: f64 = 50.0;
+pub const PALM_WRIST_MAX_DEG: f64 = 35.0;
 /// Default overlap (`Spec::lead`): the hips finish each move this share
 /// early, the chest this share early, the sword starts this share late.
 /// Professional attacks turn the hips first and the blade last (measured
@@ -71,8 +74,9 @@ pub const BLADE_LAG: f64 = 0.2;
 pub const GRIP_CLOSE: f64 = 0.9;
 /// How far the heel comes up in a pivot, degrees.
 pub const PIVOT_HEEL_DEG: f64 = 10.0;
-/// A forearm rolls this far either way, degrees.
-pub const FOREARM_ROLL_DEG: f64 = 80.0;
+/// A forearm rolls this far either way, degrees (keeps pronation/supination
+/// in the forearm rather than dumping excess twist onto the point wrist seam).
+pub const FOREARM_ROLL_DEG: f64 = 105.0;
 /// The foot may turn this far from its rest on the shin before the heel
 /// lifts, degrees.
 pub const ANKLE_MAX_DEG: f64 = 45.0;
@@ -540,6 +544,7 @@ pub struct Solver<'a> {
     fist_fingers: Vec<(usize, Trs)>,
     arm_axis: [Option<Vec3>; 2],
     leg_axis: [Option<Vec3>; 2],
+    has_forearm_twist: [bool; 2],
 }
 
 fn rad(deg: f64) -> f64 {
@@ -599,6 +604,7 @@ impl<'a> Solver<'a> {
         let free_fingers = grip::fingers(info, other, None, Some(grip::RELAXED), unit, &fist);
         let fist_fingers = grip::fingers(info, other, None, Some(0.85), unit, &fist);
         let ax = |a: usize, b: usize, c: usize| hinge_axis(rig, a, b, c);
+        let ft = crate::helpers::forearm_twists(rig);
         Ok(Solver {
             info,
             h,
@@ -616,6 +622,10 @@ impl<'a> Solver<'a> {
             leg_axis: [
                 ax(info.thigh[0], info.shin[0], info.foot[0]),
                 ax(info.thigh[1], info.shin[1], info.foot[1]),
+            ],
+            has_forearm_twist: [
+                ft.iter().any(|(_, fo, _)| *fo == info.fore[0]),
+                ft.iter().any(|(_, fo, _)| *fo == info.fore[1]),
             ],
         })
     }
@@ -688,14 +698,26 @@ impl<'a> Solver<'a> {
             let w = rig.world(locals);
             (grip - w[up].t).normalized()
         };
+        let max_wrist = if s == self.side && self.palm.is_some() {
+            PALM_WRIST_MAX_DEG
+        } else {
+            WRIST_MAX_DEG
+        };
+        let clamp_wrist = |r: Quat, fa: Vec3| -> Quat {
+            let bent = detmath::acos(r.rotate_vec(hold.forearm).dot(fa).clamp(-1.0, 1.0));
+            if bent > rad(max_wrist) {
+                let straight = shortest_arc(r.rotate_vec(hold.forearm), fa).mul(r);
+                r.slerp(straight, 1.0 - rad(max_wrist) / bent)
+            } else {
+                r
+            }
+        };
         let mut rot = self.hand_rot(&hold, dir, forearm);
         // Solve the arm for the hand's turn, turn the hand for the arm's
         // forearm (and its wrist limit), and again; the last pass solves
         // the arm for the final turn, so the grip is on its point.
         for pass in 0..4 {
             let w = rig.world(locals);
-            // A hand on the sword puts its grip point there; a free hand
-            // its wrist.
             let wrist = grip - rot.rotate_vec(hold.grip).scale(blend);
             ik::reach(
                 rig,
@@ -712,12 +734,38 @@ impl<'a> Solver<'a> {
             }
             let w = rig.world(locals);
             forearm = (w[ha].t - w[fo].t).normalized();
-            rot = self.hand_rot(&hold, dir, forearm);
-            // The wrist's limit: turn the hand back toward the forearm.
-            let bent = detmath::acos(rot.rotate_vec(hold.forearm).dot(forearm).clamp(-1.0, 1.0));
-            if bent > rad(WRIST_MAX_DEG) {
-                let straight = shortest_arc(rot.rotate_vec(hold.forearm), forearm).mul(rot);
-                rot = rot.slerp(straight, 1.0 - rad(WRIST_MAX_DEG) / bent);
+            rot = clamp_wrist(self.hand_rot(&hold, dir, forearm), forearm);
+        }
+        // Near full arm extension a ~12 cm palm lever can oscillate in a
+        // 2-cycle between passes, flipping the elbow >15 deg on the final
+        // reach and leaving the wrist bent ~80 deg: damp to the fixed point
+        // whenever that final reach jumped the forearm.
+        let fa_end = {
+            let w = rig.world(locals);
+            (w[ha].t - w[fo].t).normalized()
+        };
+        let bent_end = detmath::acos(rot.rotate_vec(hold.forearm).dot(fa_end).clamp(-1.0, 1.0));
+        if forearm.dot(fa_end) < 0.965
+            || (s == self.side && self.palm.is_some() && bent_end > rad(max_wrist + 2.0))
+        {
+            for i in 0..17 {
+                let w = rig.world(locals);
+                if i < 16 {
+                    let fa = (w[ha].t - w[fo].t).normalized();
+                    let next = clamp_wrist(self.hand_rot(&hold, dir, fa), fa);
+                    rot = rot.slerp(next, 0.5).normalized();
+                }
+                let wrist = grip - rot.rotate_vec(hold.grip).scale(blend);
+                ik::reach(
+                    rig,
+                    locals,
+                    up,
+                    fo,
+                    ha,
+                    wrist,
+                    w[up].t + pole_off.scale(self.h),
+                    self.arm_axis[s],
+                );
             }
         }
         // The hand's own rest turn on this forearm, for the free hand.
@@ -727,11 +775,20 @@ impl<'a> Solver<'a> {
             .mul(self.rest_rot(fo).conj())
             .mul(self.rest_rot(ha));
         let rot = natural.slerp(rot, blend).normalized();
-        // The hand's twist about the forearm is the forearm's, up to what
-        // a forearm turns; only the rest is the wrist's.
+        // Pronation/supination about the forearm: when a distal forearm twist
+        // helper exists (weighted to the wrist half of the forearm), forearm
+        // takes half and helpers::drive puts half the remainder onto
+        // forearm_twist (0.5 -> 0.75 -> 1.0 from elbow to wrist); without one,
+        // the forearm carries it up to FOREARM_ROLL_DEG so the wrist seam
+        // stays untwisted.
         let axis_w = (w[ha].t - w[fo].t).normalized();
         let delta = rot.mul(natural.conj());
-        let twist = twist_angle(delta, axis_w).clamp(-rad(FOREARM_ROLL_DEG), rad(FOREARM_ROLL_DEG));
+        let raw_twist = twist_angle(delta, axis_w);
+        let twist = if self.has_forearm_twist[s] {
+            (0.5 * raw_twist).clamp(-rad(FOREARM_ROLL_DEG), rad(FOREARM_ROLL_DEG))
+        } else {
+            raw_twist.clamp(-rad(FOREARM_ROLL_DEG), rad(FOREARM_ROLL_DEG))
+        };
         let rf = Quat::from_axis_angle(axis_w, twist).mul(w[fo].rotation());
         set_world_rot(rig, locals, fo, rf.normalized());
         set_world_rot(rig, locals, ha, rot);
@@ -1074,6 +1131,9 @@ pub fn build(
     let mut nodes = info.rig.joints();
     for &(n, _) in solver.grip_fingers.iter().chain(&solver.free_fingers) {
         nodes.push(n);
+    }
+    for h in crate::helpers::driven_nodes(&info.rig) {
+        nodes.push(h);
     }
     nodes.sort_unstable();
     nodes.dedup();

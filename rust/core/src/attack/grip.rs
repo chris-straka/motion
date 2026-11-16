@@ -38,6 +38,14 @@ pub const DOWN_FINGERS: f64 = 0.020;
 pub const CANT: f64 = 0.25;
 /// How far a free hand's fingers curl (share of a fist).
 pub const RELAXED: f64 = 0.35;
+/// On a distal-tip mitten rig (`palm_len > 2 * finger_len`, where `Hand ->
+/// Finger1` starts up in the distal forearm/wrist and runs to the distal
+/// phalanges), the anatomical palm/thumb-web grip pocket sits ~75% along
+/// `Hand -> Finger1` (just behind the curling mitten fingers), and the short
+/// distal tip wraps at most `DISTAL_MITTEN_CURL` of a full fist so it closes
+/// onto the handle without folding into itself.
+pub const DISTAL_MITTEN_PALM_SHARE: f64 = 0.55;
+pub const DISTAL_MITTEN_CURL: f64 = 0.55;
 
 const FINGERS: [&str; 5] = ["f_index", "f_middle", "f_ring", "f_pinky", "thumb"];
 /// A fist when no grips file says: radians per joint (root, middle, tip).
@@ -151,8 +159,10 @@ pub fn single_chain(info: &RigInfo, s: usize) -> Option<Vec<usize>> {
 /// unified finger chain `chain` (2 or 3 bones, knuckle first):
 /// - `finger_dir`: unit vector from `chain[0]` to `chain[1]`
 /// - `palm_normal`: unit vector perpendicular to `finger_dir` pointing out
-///   of the palm (from the chain's own rest curl when > ~3 deg, else the
-///   standing hand's anatomical palm for T-pose through arms-at-sides)
+///   of the palm, derived from the standing hand's anatomical plane (`fwd`
+///   and `finger_dir`) so a sideways rest phalanx kink never rolls the
+///   blade; rest curl only flips the sign when strongly opposite (`< -0.85`,
+///   a palm-up rest pose)
 /// - `knuckle_line`: unit vector from the little-finger edge toward the
 ///   index/thumb edge.
 pub fn single_finger_axes(
@@ -169,38 +179,35 @@ pub fn single_finger_axes(
         return None;
     }
     let fd = along.normalized();
-    let mut palm = None;
+    let fwd_p = fwd - fd.scale(fwd.dot(fd));
+    let mut palm = if fwd_p.length() > 0.2 {
+        let kn0 = fwd_p.normalized();
+        if right {
+            kn0.cross(fd).normalized()
+        } else {
+            fd.cross(kn0).normalized()
+        }
+    } else {
+        let down = Vec3::new(0.0, -1.0, 0.0);
+        let down_p = down - fd.scale(down.dot(fd));
+        if down_p.length() < 1e-9 {
+            return None;
+        }
+        down_p.normalized()
+    };
     if chain.len() >= 3 {
         let d1 = rig.head(chain[2]) - rig.head(chain[1]);
         let d1_len = d1.length();
         if d1_len > 1e-9 {
             let perp = d1 - fd.scale(d1.dot(fd));
             if perp.length() > 0.0523 * d1_len && d1.dot(fd) > 0.0 {
-                palm = Some(perp.normalized());
+                let curl_dir = perp.normalized();
+                if curl_dir.dot(palm) < -0.85 {
+                    palm = palm.scale(-1.0);
+                }
             }
         }
     }
-    let palm = match palm {
-        Some(p) => p,
-        None => {
-            let fwd_p = fwd - fd.scale(fwd.dot(fd));
-            if fwd_p.length() > 0.2 {
-                let kn0 = fwd_p.normalized();
-                if right {
-                    kn0.cross(fd).normalized()
-                } else {
-                    fd.cross(kn0).normalized()
-                }
-            } else {
-                let down = Vec3::new(0.0, -1.0, 0.0);
-                let down_p = down - fd.scale(down.dot(fd));
-                if down_p.length() < 1e-9 {
-                    return None;
-                }
-                down_p.normalized()
-            }
-        }
-    };
     let kn = if right {
         fd.cross(palm).normalized()
     } else {
@@ -257,18 +264,20 @@ pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
     }
     let mid = single_chain(info, s)?;
     let (fd, palm, kn) = single_finger_axes(rig, &mid, s == 1, info.fwd)?;
-    // When the hand bone already spans the palm and proximal phalanx (e.g.
-    // UniRig's long hand bone ending mid-finger), `mid[0]` is already in
-    // the grip pocket; when `mid[0]` sits at the knuckle, step `DOWN_FINGERS`
-    // down the finger so the first phalanx wraps over the handle.
-    let palm_len = (rig.head(mid[0]) - rig.head(info.hand[s])).length();
+    // When `Hand -> mid[0]` is over twice the finger chain's own length
+    // (a distal-tip mitten rig whose hand bone spans the palm and proximal
+    // fingers nearly to the tip), anchor the grip pocket in the palm (~45%
+    // from wrist to `mid[0]`) instead of floating it out at the fingertips.
+    let hand_head = rig.head(info.hand[s]);
+    let palm_vec = rig.head(mid[0]) - hand_head;
+    let palm_len = palm_vec.length();
     let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
-    let down = if finger_len > 1e-9 && palm_len > 2.2 * finger_len {
-        0.0
+    let base = if finger_len > 1e-9 && palm_len > 2.0 * finger_len {
+        hand_head + palm_vec.scale(DISTAL_MITTEN_PALM_SHARE)
     } else {
-        DOWN_FINGERS * unit
+        rig.head(mid[0]) + fd.scale(DOWN_FINGERS * unit)
     };
-    let centre = rig.head(mid[0]) + palm.scale((HANDLE_R + FINGER_R) * unit) + fd.scale(down);
+    let centre = base + palm.scale((HANDLE_R + FINGER_R) * unit);
     let blade = (kn + fd.scale(CANT)).normalized();
     let edge = (fd - blade.scale(fd.dot(blade))).normalized();
     let world = Quat::from_mat3(Mat3::from_cols(edge, blade, edge.cross(blade)));
@@ -357,8 +366,16 @@ pub fn fingers(
     if let Some(mid) = single_chain(info, s) {
         if let Some((fd, palm, kn)) = single_finger_axes(rig, &mid, s == 1, info.fwd) {
             let curl_axis = fd.cross(palm).normalized();
+            let palm_len = (rig.head(mid[0]) - rig.head(info.hand[s])).length();
+            let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
+            let distal_mitten = finger_len > 1e-9 && palm_len > 2.0 * finger_len;
+            let cap = if distal_mitten {
+                DISTAL_MITTEN_CURL
+            } else {
+                1.0
+            };
             let bends: Vec<f64> = (0..mid.len())
-                .map(|k| fist(&rig.names[mid[k]]).unwrap_or(DEFAULT_FIST[1][k]))
+                .map(|k| fist(&rig.names[mid[k]]).unwrap_or(DEFAULT_FIST[1][k]) * cap)
                 .collect();
             let pose = |c: f64| -> Vec<Option<Trs>> {
                 let mut l: Vec<Option<Trs>> = vec![None; rig.names.len()];
@@ -368,8 +385,15 @@ pub fn fingers(
                 l
             };
             let c = match (amount, handle) {
-                (Some(a), _) => a,
+                (Some(a), _) => {
+                    if distal_mitten {
+                        a.min(1.0)
+                    } else {
+                        a
+                    }
+                }
                 (None, None) => RELAXED,
+                (None, Some(_)) if distal_mitten => 1.0,
                 (None, Some((on, dir))) => {
                     let touch = (HANDLE_R + FINGER_R) * unit;
                     let mut c = 0.0;
@@ -595,5 +619,16 @@ mod tests {
         assert!(fd.approx_eq(Vec3::new(0.0, -1.0, 0.0), 1e-9));
         assert!(palm.approx_eq(Vec3::new(1.0, 0.0, 0.0), 1e-9));
         assert!(kn.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
+
+        // A sideways rest kink on the distal phalanx (+Z) must NEVER roll the
+        // palm normal or the blade away from the anatomical hand plane.
+        let r_side_kink = make(&[
+            Vec3::new(-0.42, 0.80, 0.0),
+            Vec3::new(-0.42, 0.78, 0.0),
+            Vec3::new(-0.42, 0.75, 0.015),
+        ]);
+        let (_, palm_k, kn_k) = single_finger_axes(&r_side_kink, &[0, 1, 2], true, fwd).unwrap();
+        assert!(palm_k.approx_eq(Vec3::new(1.0, 0.0, 0.0), 1e-9));
+        assert!(kn_k.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
     }
 }
