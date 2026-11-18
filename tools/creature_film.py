@@ -68,6 +68,28 @@ def bind(arms, act):
             ad.action_slot = pick if pick is not None else slots[0]
 
 
+def opaque_paint():
+    """Every material drawn solid in its own colour: some exports carry a
+    base colour with zero alpha (FBX packs), which Workbench draws as
+    nothing but a shadow; a painted texture shows as it is."""
+    for m in bpy.data.materials:
+        rgb = list(m.diffuse_color[:3])
+        if m.use_nodes and m.node_tree:
+            for n in m.node_tree.nodes:
+                if n.type == "BSDF_PRINCIPLED":
+                    if "Alpha" in n.inputs:
+                        n.inputs["Alpha"].default_value = 1.0
+                    base = n.inputs.get("Base Color")
+                    if base is not None and not base.is_linked:
+                        rgb = list(base.default_value[:3])
+        m.diffuse_color = (rgb[0], rgb[1], rgb[2], 1.0)
+        for attr, val in (("blend_method", "OPAQUE"), ("surface_render_method", "DITHERED")):
+            try:
+                setattr(m, attr, val)
+            except (AttributeError, TypeError):
+                pass
+
+
 def mesh_points(objs):
     dg = bpy.context.evaluated_depsgraph_get()
     pts = []
@@ -118,6 +140,7 @@ def main():
     known = set(bpy.ops.import_scene.gltf.get_rna_type().properties.keys())
     kw = {"disable_bone_shape": True} if "disable_bone_shape" in known else {}
     bpy.ops.import_scene.gltf(filepath=os.path.abspath(o["glb"]), **kw)
+    opaque_paint()
     objs = [x for x in bpy.data.objects if x.type in ("MESH", "ARMATURE", "EMPTY")]
     arms = [x for x in objs if x.type == "ARMATURE"]
     acts = {a.name: a for a in bpy.data.actions}
