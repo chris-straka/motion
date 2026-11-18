@@ -78,14 +78,14 @@ Clips are made only by `motionforge creature-gait`
 (`rust/core/src/creature/gait.rs`), and `gait::parts` refuses any profile
 that does not have exactly four feet on the ground.
 
-| Body (as `creature-rig` reads it) | Clips today | HLH plays |
-| --- | --- | --- |
-| four-legged | `walk`, `trot` (feet planted), `attack` (a lunge, forward kinematics) | walk, trot, attack; no idle (stands in the walk's first frame) |
-| four-legged, but `creature-profile` drops a joint it takes for a stray | none | stands at rest |
-| two-legged (bipeds, hunched long-armed monsters) | none | stands at rest |
-| winged | none | stands at rest |
-| many-limbed (more than four legs, a hand on its fingers) | none | stands at rest |
-| legless (fish, cloaked, formless) | none | stands at rest |
+| Body (as `creature-rig` reads it)                                      | Clips today                                                           | HLH plays                                                      |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------- |
+| four-legged                                                            | `walk`, `trot` (feet planted), `attack` (a lunge, forward kinematics) | walk, trot, attack; no idle (stands in the walk's first frame) |
+| four-legged, but `creature-profile` drops a joint it takes for a stray | none                                                                  | stands at rest                                                 |
+| two-legged (bipeds, hunched long-armed monsters)                       | none                                                                  | stands at rest                                                 |
+| winged                                                                 | none                                                                  | stands at rest                                                 |
+| many-limbed (more than four legs, a hand on its fingers)               | none                                                                  | stands at rest                                                 |
+| legless (fish, cloaked, formless)                                      | none                                                                  | stands at rest                                                 |
 
 On the predicted rig, the gait is tried only when the body-read rig was
 four-legged. On the owner's 34 creatures (route8, 2026-11-13) 13 got clips,
@@ -204,7 +204,7 @@ glTF spec.
   `~/.cache/creature-route` (skintokens, weightforge, rfcheck, charkit;
   motion is the job's own snapshot) and records each one's commit.
 - `MAP` is the machine's list of where each fixed input is (`id <tab> path
-  <tab> game name`); the set runner refuses a file whose sha256 is not the
+<tab> game name`); the set runner refuses a file whose sha256 is not the
   one in `tools/creature_sets.json`. The dev set runs with
   `CREATURE_SET=dev`: benchmark animals never go into the game repo, so
   gate 9 is not run for them, and `gates.json` says so.

@@ -139,6 +139,47 @@ feet sliding; kept to set beside `walk`) are plain forward kinematics.
 `--clips-json DIR` also writes each clip as `DIR/<name>.clip.json` for
 `python/creature/render.py --mode motion`.
 
+## An idle and an attack for any body plan
+
+`creature-clips --creature c.json --glb-in rig.glb --glb-out out.glb
+[--clips idle,attack,sweep]` (`rust/core/src/creature/anybody.rs`, 2026-11-18)
+gives every body the gait can't read (two-legged, winged, many-limbed,
+legless, or four-legged with a profile that dropped a joint) something to
+stand in and something to strike with, and a four-legged body its idle.
+skintokens' creature route calls it after the gait (`docs/creature-route.md`).
+
+- **The body, by the skeleton's shape.** The centre line is followed from
+  the root by structure: at each bone the child nearest the mirror plane
+  goes on (an only child always does, so a head held to one side stays the
+  head; a child with a partner as far out on the other side never does).
+  Side chains holding a foot are legs, the rest arms (arms, wings, fins). A
+  bone with a planted foot below it is held.
+- **idle** (3 s, loops): the free part of the front chain breathes (3
+  degrees), the head looks about (8), a tail sways, arms stir; a body on
+  no feet sways along its length and beats its fins or wings.
+- **attack** (1 s, rest to rest): rear, then strike. The free front chain
+  lifts 18 degrees and drives down 32, the head 12 and 18; the tail goes
+  against it. The strikers are the free arms when they come as a pair, else
+  the two limbs reaching farthest forward, lifted off the ground (a
+  knuckle-walker's hands, a spider's front legs). A striker swings only in
+  its own side's upright plane (drawn back 30, through 60), so it never
+  crosses the body; one held out sideways also beats 45 degrees up and down.
+  A body on nothing lunges forward as a whole.
+- **sweep** (a test clip, never shipped): each side limb in turn swings
+  forward and out to its own side. Kept for looking at a rig; gate 6 does
+  not use it (it strains clean rigs too).
+- What changed on the dev set and why (2026-11-18): a centre band of fixed
+  width lost a generated spine that wanders a few percent sideways (the
+  structural walk replaced it); a wing folded up and back swung forward
+  across the head (the in-plane swing replaced it); a lone limb whose foot
+  the profile cut became the only striker (strikers now come in pairs).
+- Measured (`creature.sh`, gate 5 and the blind judge of gate 6): on the
+  dev set every body got an idle or walk and an attack that turn a joint
+  past the gate's limits; the judge saw the attack on trex, velociraptor,
+  bat, dragon and the retopo bench creatures, not on the spider and wasp
+  before the striker change (their rerun on the final clips is in
+  `docs/creature-route.md`).
+
 ## Lining up the views of a generated video
 
 A video model is handed the start picture and returns a clip that need
@@ -188,26 +229,26 @@ Known answers (`rust/core/tests/creature_align.rs`, the fixture biped,
 1 px noise; `cargo test --locked --release -p motion_core --test
 creature_align -- --nocapture`, f, 2026-11-13):
 
-| case | before | after |
-|---|---|---|
-| side view 5 frames late (`lag` and `auto`) | motion ratio 0.602, rejected | lag 5.06 frames, ratio 0.019, accepted, joints 6.0 mm from the truth |
-| side view playing 8% slow (lag 0 -> 7.7 frames) | ratio 0.442 | constant lag 4.43 frames: 0.080; warp (lag 2..6): 0.033, chosen by `auto` |
-| front zoomed 1.25 and shifted (30, -12) px, side 0.9 and (-8, 15) | median ray gap 14.7% | fit 1.2467, (30.13, -11.94) and 0.8984, (-7.92, 15.07); frame-0 rms 43.6 -> 1.56 and 20.3 -> 0.85 px; gap 0.36% (untouched clip 0.34%) |
-| both halves read at 640 px for 512 px views, side 6 frames late (1.5 px noise, 2% lost) | gap 5.33%, ratio 0.604, rejected | gap 0.54%, ratio 0.079, accepted, lag within a frame of 6 |
-| two different moves, one per view | rejected | still rejected under `lag`, `warp` and `auto` |
-| every fifth frame dropped, timestamps kept | 40 frames | resampled to 50, every joint within 6 px of the full clip |
+| case                                                                                    | before                           | after                                                                                                                                  |
+| --------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| side view 5 frames late (`lag` and `auto`)                                              | motion ratio 0.602, rejected     | lag 5.06 frames, ratio 0.019, accepted, joints 6.0 mm from the truth                                                                   |
+| side view playing 8% slow (lag 0 -> 7.7 frames)                                         | ratio 0.442                      | constant lag 4.43 frames: 0.080; warp (lag 2..6): 0.033, chosen by `auto`                                                              |
+| front zoomed 1.25 and shifted (30, -12) px, side 0.9 and (-8, 15)                       | median ray gap 14.7%             | fit 1.2467, (30.13, -11.94) and 0.8984, (-7.92, 15.07); frame-0 rms 43.6 -> 1.56 and 20.3 -> 0.85 px; gap 0.36% (untouched clip 0.34%) |
+| both halves read at 640 px for 512 px views, side 6 frames late (1.5 px noise, 2% lost) | gap 5.33%, ratio 0.604, rejected | gap 0.54%, ratio 0.079, accepted, lag within a frame of 6                                                                              |
+| two different moves, one per view                                                       | rejected                         | still rejected under `lag`, `warp` and `auto`                                                                                          |
+| every fifth frame dropped, timestamps kept                                              | 40 frames                        | resampled to 50, every joint within 6 px of the full clip                                                                              |
 
 **The Seedance wolf walk with the views lined up (2026-11-13): still
 rejected, and rightly.** Same detections as 2026-11-11 (fleet job
 `vvyr2dq3` on f), `creature-solve --align-views --align-time auto`:
 
-| | as read | lined up |
-|---|---|---|
-| camera fit (frame 0) | - | front zoom 1.195, shift (64.6, 61.5) px; side 1.249, (63.8, 64.8); rest-pose fit 89.3 -> 8.6 and 91.5 -> 8.6 px rms |
-| median ray gap | 4.69% of the height | 2.67% |
-| motion ratio (limit 0.50) | 1.142 | 1.143 (lag -0.38 frames; warp 1.049, lag -3.0..3.4, not 10% better) |
-| fit residual (forced solve) | 112.4 mm rms | 13.0 mm |
-| bone-frames held at a limit (forced) | 369 | 120 |
+|                                      | as read             | lined up                                                                                                            |
+| ------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| camera fit (frame 0)                 | -                   | front zoom 1.195, shift (64.6, 61.5) px; side 1.249, (63.8, 64.8); rest-pose fit 89.3 -> 8.6 and 91.5 -> 8.6 px rms |
+| median ray gap                       | 4.69% of the height | 2.67%                                                                                                               |
+| motion ratio (limit 0.50)            | 1.142               | 1.143 (lag -0.38 frames; warp 1.049, lag -3.0..3.4, not 10% better)                                                 |
+| fit residual (forced solve)          | 112.4 mm rms        | 13.0 mm                                                                                                             |
+| bone-frames held at a limit (forced) | 369                 | 120                                                                                                                 |
 
 The camera fit is worth keeping on for every generated clip: the rays
 now cross (residual 112 -> 13 mm). Rendered on the wolf through both
