@@ -306,32 +306,25 @@ def gate_judge(name, glb, work, blender):
     ctrl = os.path.join(work, "control.png")
     side_by_side(films[move["name"]]["sheet"], films[move["name"]]["sheet"], ctrl)
     items.append({"category": "control", "clip": move["name"], "image": ctrl, "expected": "cant_tell"})
-    # the planted pair: a copy of this creature with a test clip that swings each limb in turn
-    # (`creature-clips --clips sweep`; an idle or attack can leave legs still and hide a swap),
-    # beside the same copy with its limbs swapped. Neither copy ships.
-    mf = os.environ.get("MOTIONFORGE_BIN") or shutil.which("motionforge")
-    prof, sweep = os.path.join(work, "sweep.creature.json"), os.path.join(work, f"{name}_sweep.glb")
-    r = sh([mf, "creature-profile", "--rig", glb, "--output", prof, "--clean-glb", os.path.join(work, "sweep.clean.glb"),
-            "--report", os.path.join(work, "sweep.profile.json"), "--name", name])
-    if r["exit"] != 0:
-        raise RuntimeError("creature-profile for the sweep: " + tail(r["err"] or r["out"], 300))
-    r = sh([mf, "creature-clips", "--creature", prof, "--glb-in", glb, "--glb-out", sweep, "--clips", "sweep"])
-    if r["exit"] != 0:
-        raise RuntimeError("creature-clips --clips sweep: " + tail(r["err"] or r["out"], 300))
-    limbs = sum(1 for ln in r["out"].splitlines() if ln.startswith(("leg:", "arm:")))
-    # the planted rig: each limb's skin on its mirror partner's bones (`creature_gates.py plant
-    # swap`), beside the clean copy on the same sweep, sides by a coin; caught when the judge
-    # says the clean half moves more cleanly.
-    planted = os.path.join(work, f"{name}_planted_swap.glb")
-    cg.plant("swap", sweep, planted)
-    pclip, pn = "sweep", 4 * max(1, limbs)
-    m1 = film(blender, sweep, pclip, os.path.join(frames, "m1"), measure=True, frames=pn)
+    # The planted pair: this creature beside skintokens' planted rig of it (`creature-bench plant`:
+    # each limb's skin on the farthest joint of the opposite side), on its own clip that moves its
+    # limbs most (a walk when it has one, else its attack), sides by a coin; caught when the judge
+    # says the clean half moves more cleanly. Tried and dropped on the dev set: a plain mirror swap
+    # (moves like the real thing at the game camera) and a test sweep of each limb (it strains
+    # clean rigs too, so the two halves both looked broken).
+    cb = os.environ.get("CREATURE_BENCH_BIN") or shutil.which("creature-bench")
+    planted = os.path.join(work, f"{name}_planted.glb")
+    r = sh([cb, "plant", glb, planted])
+    if r["exit"] != 0 or not os.path.exists(planted):
+        raise RuntimeError("creature-bench plant: " + tail(r["err"] or r["out"], 300))
+    pclip, pn = (cg.clip_named(cl, cg.WALK_WORDS) or att)["name"], 8
+    m1 = film(blender, glb, pclip, os.path.join(frames, "m1"), measure=True, frames=pn)
     m2 = film(blender, planted, pclip, os.path.join(frames, "m2"), measure=True, frames=pn)
     crop = [min(m1["crop"][0], m2["crop"][0]), max(m1["crop"][1], m2["crop"][1]),
             min(m1["crop"][2], m2["crop"][2]), max(m1["crop"][3], m2["crop"][3])]
-    a = film(blender, sweep, pclip, os.path.join(frames, "pc"), crop=crop, frames=pn)
+    a = film(blender, glb, pclip, os.path.join(frames, "pc"), crop=crop, frames=pn)
     b = film(blender, planted, pclip, os.path.join(frames, "pp"), crop=crop, frames=pn)
-    sa, sb = os.path.join(work, "sweep_clean.png"), os.path.join(work, "sweep_planted.png")
+    sa, sb = os.path.join(work, "pair_clean.png"), os.path.join(work, "pair_planted.png")
     tile(a["pngs"], sa)
     tile(b["pngs"], sb)
     rnd = random.Random(JUDGE_SEED + int(hashlib.sha256(name.encode()).hexdigest()[:8], 16))
@@ -345,7 +338,7 @@ def gate_judge(name, glb, work, blender):
         it["item"] = i
         shutil.copyfile(it["image"], os.path.join(pack, f"item_{i:02d}.png"))
         what = "attack" if it["category"] == "film" and it.get("attack_clip") else it["clip"]
-        clip_words = {"attack": "an attack", "sweep": "a test clip: each limb in turn swings forward, folds and comes back"}
+        clip_words = {"attack": "an attack"}
         questions[str(i)] = {"image": f"item_{i:02d}.png",
                              "kind": "single" if it["category"] == "film" else "pair",
                              "clip": clip_words.get(what, f"the '{it['clip']}' clip")}
