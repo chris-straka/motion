@@ -153,7 +153,10 @@ joint's local axes. On the single-finger hero rig in the owner's corpus,
 `motionforge socket` places `Socket_Hand_L/R` in the palms and authored
 `sweep` / `cleave` / `backcut` (`--blade-pose socket`) move from grip
 `0` (`18.7 cm` handle, `0 deg` curl) to grip `1.00` (`2.6 cm` handle,
-`47.3 deg` curl), scoring `0.50 / 0.43 / 0.41` overall.
+`47.3 deg` curl), scoring `0.50 / 0.43 / 0.41` overall. Those numbers predate
+the distal-mitten pocket (2026-11-16, 5012a0d); with it the same run reads
+grip `0.345` (`9.1 cm`, `26 deg`), overall `0.345` for sweep, cleave and
+backcut (2026-11-18, `docs/log.md`).
 
 **Weight: the hips lead, the blade lags, then snaps.** Each move's keys
 are reached on three clocks: the hips (and feet) finish 35% early, the

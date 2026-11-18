@@ -607,3 +607,36 @@ fallback (`18.7 cm` off the knuckle, `0 deg` finger curl).
   cm, 0 deg)` -> `1.00 (2.6 cm, 47.3 deg)`; authored `sweep / cleave /
   backcut` overall `0.00 -> 0.50 / 0.43 / 0.41`; five-finger positive
   control unchanged (`0.97`, `3.8 cm, 33.8 deg`).
+
+## 2026-11-18: the grip measure has its own constants again
+
+Commit 5012a0d (2026-11-16) changed the grip solver and the grip
+measure together: `readcam` read the palm at the solver's own
+`attack::grip::DISTAL_MITTEN_PALM_SHARE` (0.55 along hand -> finger
+root) and full curl for mittens dropped from 35 to 20 deg, so the hero
+read 1.00 after its curl fell from 47 to 26 deg. The measure now owns
+`readcam::GRIP_MITTEN_PALM_SHARE = 1.0` and `GRIP_MITTEN_CURL_FULL_DEG =
+35`, the values before 5012a0d; the solver keeps its change. The test
+tolerance 9bc9b46 loosened (`tests/attack.rs`, grip miss 1e-9 -> 1e-6)
+is back at 1e-9.
+
+- Measured (fleet job `y45x3xbz` on z, the game's
+  rigs at its commit `bd3610cd`: `motionforge attack --preset all`, then `motionforge
+  motion check --camera game --blade-pose socket --no-through --json`):
+  single-finger hero grip `0.345` (handle 9.1 cm, curl 26 deg), overall
+  sweep / cleave / backcut / thrust `0.345 / 0.345 / 0.345 / 0.172`;
+  five-finger control grip `0.966` (3.8 cm, 33.8 deg), overall
+  `0.479 / 0.484 / 0.488 / 0.165`, the same grip as on 2026-11-16.
+- The 2026-11-16 entry above (grip 1.00 at 47.3 deg) was measured before
+  5012a0d changed the solver; it no longer describes the solver.
+- Tests: `cargo test --locked --release --no-fail-fast` passes 221 of
+  223 (fleet job `egtus8k6`). Two fail and are left failing:
+  `single_finger_chain_places_palm_socket_and_curls_round_the_handle`
+  (grip miss 3.6e-8 m against the restored 1e-9 limit: the damped wrist
+  pass no longer lands exactly) and
+  `distal_mitten_places_socket_in_palm_pocket_and_rejects_fingertip_socket`
+  (it checked the measure against the solver's own palm point).
+- Not done: a blind same-frame judge of the mitten grip at the hand
+  camera, and a check of `FOREARM_ROLL_DEG = 105` on a rig without twist
+  bones.
+

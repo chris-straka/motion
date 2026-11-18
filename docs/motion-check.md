@@ -220,20 +220,40 @@ and a giant and numbers compare across characters.
     `ForearmTwist` and `ThighTwist` joints map onto `DEF-upper_arm_twist`,
     `DEF-forearm_twist` and `DEF-thigh_twist` and are driven in `helpers::drive`
     and `attack::build` without forearm pinch.
-  - On distal-tip mitten rigs (`palm_len > 2 * finger_len`), `palm_hold` and
-    `readcam` anchor the grip pocket at `0.55` along `Hand -> Finger1` inside
-    the palm rather than out at the fingertips (a fingertip socket now fails
-    `motion check` at `0.47`, `8.2 cm`), `single_finger_axes` derives the palm
-    from anatomical hand geometry so sideways phalanx kinks never roll the
-    blade, and distal curl is capped gently (`1.00`, `2.6 cm / 26 deg` across
-    all four presets).
-  - In `attack::Solver::place_hand`, damped fixed-point convergence eliminates
-    the full-extension 2-cycle elbow/wrist oscillation that left wrists bent
-    ~83 deg, keeping skinned palms within `PALM_WRIST_MAX_DEG = 35 deg` and
-    rolling pronation/supination inside the forearm (`FOREARM_ROLL_DEG = 105
-    deg`); on the five-finger hero rig in the owner's corpus, authored presets
-    score `grip 0.99 (4.6 cm / 36 deg)` (`sweep` `0.48`, `backcut` `0.46`,
-    `cleave` `0.44`, `thrust` `0.16`).
+  - On distal-tip mitten rigs (`palm_len > 2 * finger_len`), the solver
+    (`attack::grip::palm_hold`) puts the grip pocket at `0.55` along
+    `Hand -> Finger1` and caps the distal curl at `0.55` of a fist;
+    `single_finger_axes` derives the palm from the hand's geometry.
+  - `attack::Solver::place_hand` gained a damped fixed-point pass for an
+    elbow/wrist 2-cycle, `PALM_WRIST_MAX_DEG = 35 deg` and `FOREARM_ROLL_DEG
+    = 105 deg`. The "~83 deg wrist" it is said to remove: not measured.
+
+  **2026-11-18 (the measure restored)**: the 2026-11-16 change also moved
+  the grip measure to the solver's own `0.55` palm point and lowered the
+  measure's full curl for mittens from 35 to 20 deg, so the hero's curl
+  dropping from 47 to 26 deg still read 1.00. The measure now has its own
+  constants (`readcam::GRIP_MITTEN_PALM_SHARE = 1.0`,
+  `GRIP_MITTEN_CURL_FULL_DEG = 35`), the values the blind-judged measure
+  had before; change them only after a blind same-frame judge backs it.
+  Measured with the restored measure (fleet job `y45x3xbz`, on z, the
+  game's rigs at its commit `bd3610cd`; `motionforge attack --preset all`, then
+  `motionforge motion check --camera game --blade-pose socket
+  --no-through --json`; the control's rig through `standardize`
+  and `socket` first):
+
+  | rig | grip | sweep / cleave / backcut / thrust overall |
+  |---|---|---|
+  | single-finger hero | 0.345 (handle 9.1 cm from the finger root, 26 deg) | 0.345 / 0.345 / 0.345 / 0.172 |
+  | five-finger control | 0.966 (3.8 cm, 33.8 deg) | 0.479 / 0.484 / 0.488 / 0.165 |
+
+  The hero's hand now closes round the handle (it was `0`, 18.7 cm, no
+  finger turn) but the measure still fails it: the handle sits 9.1 cm
+  from the knuckles. Whether the solver's mid-hand pocket is right for a
+  long hand bone is for a blind same-frame judge at the hand camera;
+  none has been run. The 2026-11-16 figures `1.00 (2.6 cm / 26 deg)`,
+  the fingertip socket's `0.47 / 8.2 cm` and the "five-finger hero"
+  `0.99 (4.6 cm / 36 deg)` were read with the coupled measure or name no
+  command and rig, and are withdrawn.
 
 Clips are sampled at 30 fps whatever rate they were keyed at (`--fps`
 to change), the rate the renders use, so frame numbers match the
