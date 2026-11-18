@@ -36,7 +36,7 @@ sys.exit(1 if bad else 0)
 PY
 while IFS=$'\t' read -r id game path; do
   t0=$(date +%s)
-  bash "$here/tools/creature.sh" "$game" "$path" "$root/$game" > "$root/$game.log" 2>&1
+  bash "$here/tools/creature.sh" "$game" "$path" "$root/$game" > "$root/$game.log" 2>&1 < /dev/null
   code=$?
   echo "$id ($game): exit $code in $(( $(date +%s) - t0 )) s: $(tail -1 "$root/$game.log")"
 done < "$root/plan.tsv"
