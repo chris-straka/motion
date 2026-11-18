@@ -64,24 +64,30 @@ impl Body {
     pub fn free_back(&self) -> Vec<usize> {
         self.free(&self.back)
     }
-    /// What strikes in the attack: the free side chains; on a body with
-    /// none and four legs or more, the pair of legs that leaves the body
-    /// highest and farthest forward (a knuckle-walker's arms, a spider's
-    /// front pair), lifted off the ground; it stands on the others.
+    /// What strikes in the attack: the free side chains when they come as
+    /// a pair or more (arms, wings); else, on a body of four limbs or more,
+    /// the pair whose tips reach farthest forward (a spider's front legs, a
+    /// knuckle-walker's hands), lifted off the ground; it stands on the
+    /// others. A lone free chain (a leg whose foot the profile cut) does not
+    /// make an attack.
     pub fn strikers(&self, c: &Creature) -> Vec<Vec<usize>> {
-        if !self.arms.is_empty() || self.legs.len() < 4 {
+        if self.arms.len() >= 2 {
+            return self.arms.clone();
+        }
+        let mut all: Vec<Vec<usize>> = self.legs.iter().chain(self.arms.iter()).cloned().collect();
+        if all.len() < 4 {
             return self.arms.clone();
         }
         let up = Vec3::new(0.0, 0.0, 1.0);
-        let at = |leg: &Vec<usize>| {
-            let b = &c.skeleton.bones[leg[0]];
-            let p = b.parent.map_or(b.head, |p| c.skeleton.bones[p].head);
-            p.dot(up) + p.dot(c.forward)
+        let ahead = |limb: &Vec<usize>| {
+            let tip = c.skeleton.bones[*limb.last().unwrap()].tail;
+            let b = &c.skeleton.bones[limb[0]];
+            let at = b.parent.map_or(b.head, |p| c.skeleton.bones[p].head);
+            tip.dot(c.forward) + 0.5 * at.dot(up)
         };
-        let mut legs = self.legs.clone();
-        legs.sort_by(|a, b| at(b).total_cmp(&at(a)).then(a[0].cmp(&b[0])));
-        legs.truncate(2);
-        legs
+        all.sort_by(|a, b| ahead(b).total_cmp(&ahead(a)).then(a[0].cmp(&b[0])));
+        all.truncate(2);
+        all
     }
 
     /// `held` with the feet of `lifted` chains taken off the ground.
@@ -369,7 +375,7 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
                 p.add(
                     top,
                     axis_toward(c, top, up, c.forward),
-                    30.0 * rear - 40.0 * strike,
+                    45.0 * rear - 45.0 * strike,
                 );
             }
         }
