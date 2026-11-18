@@ -165,3 +165,28 @@ to HLH branch `character-line`) runs after it, from an HLH worktree.
 
 The gate script, its planted inputs and the input lists are committed
 before the command, and are not edited afterwards to get a pass.
+
+## Inputs (fixed 2026-11-18, before the first run)
+
+`tools/creature_sets.json` lists them by id with each file's sha256; which
+file is which is kept off the repo on the machine that holds them (a map of
+`id <tab> path`), and the set runner refuses a file whose sha256 differs.
+
+- **Dev set** (may be tuned on): skintokens' 12 benchmark animals (their
+  `bare.glb`) and retopo's 5 bench creatures (`retopo bench 1..5`, the
+  owner's Tripo exports).
+- **Held-out set** (checked on, never tuned on): six of the owner's Tripo
+  monsters, `held-out 1..6`, picked by body plan: two four-legged (a plain
+  one with a tail; one with insect-thin legs and spines), two two-legged
+  (hunched with long arms; gaunt and upright), one many-limbed (a hand that
+  walks on its fingers), one legless with a tail (a swimmer). The why of
+  each is in the file.
+- **Picker out of sample**: `~/Games/_refs` has no artist-rigged animal
+  outside the dev set, so six animals from the same CC0 packs that were
+  never in the picker's calibration (stegosaurus, triceratops,
+  parasaurolophus, llama, frog, snake) check the skintokens picker beside
+  its in-sample 12 of 12.
+
+A model's facing convention, used only when its own facing measures weak,
+follows its file type: Tripo's FBX faces +X; a glTF file faces +Z by the
+glTF spec.

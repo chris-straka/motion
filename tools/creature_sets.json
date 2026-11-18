@@ -1,0 +1,48 @@
+{
+ "format": "creature-sets/1",
+ "fixed": "2026-11-18, before the first run of tools/creature.sh; never swapped or edited to get a pass",
+ "note": "Files are pinned by sha256 only. Which file is which lives off the repo on the machine that holds them (a map file of `id <tab> path`), so no corpus name or path is committed; tools/creature_set.sh refuses a file whose sha256 differs.",
+ "dev": [
+  {"id": "apatosaurus", "from": "skintokens benchmark animal (Quaternius CC0, bare.glb from prep_truth.py)", "plan": "four-legged, long tail", "sha256": "03ec9c9456e77ea04fda9e46205ece3d6458a8d3a61bfc42e7e082e06433f97c"},
+  {"id": "bat", "from": "skintokens benchmark animal", "plan": "winged", "sha256": "9a0453b12a554ebc16c5596aab9644edc27bf3f4332723863fba7b737cf3227c"},
+  {"id": "cow", "from": "skintokens benchmark animal", "plan": "four-legged", "sha256": "0b5a9f911bd29b9d6b4d275f5f6f9fefa1a60290d4b47ff7f90b999a2ad4442c"},
+  {"id": "dragon", "from": "skintokens benchmark animal", "plan": "winged", "sha256": "30079c0f2536b19bce61852cfe5c40c951c73b70da7bc069f697b88f637ec33a"},
+  {"id": "fox", "from": "skintokens benchmark animal (Khronos sample, CC-BY)", "plan": "four-legged, long tail", "sha256": "4c4bee6019f6058ac5eb23c2c64aec4f7004e92f418cc711d03afe327270d1c8"},
+  {"id": "horse", "from": "skintokens benchmark animal", "plan": "four-legged", "sha256": "e15513a5022fa9ff9196ccce46580f8e2415a9d2dbd52c2926e26280a3e2de65"},
+  {"id": "pug", "from": "skintokens benchmark animal", "plan": "four-legged", "sha256": "23c09dbfbaf7e8587f0212327c6418c382493f353bfe34babe74349778c91935"},
+  {"id": "rat", "from": "skintokens benchmark animal", "plan": "four-legged, long tail", "sha256": "1cc32060681d346ee7ea4ad391e30634d6567c8e2030b8c7dbed5239cf8ab9c4"},
+  {"id": "spider", "from": "skintokens benchmark animal", "plan": "many-legged", "sha256": "cfb6df222e4f3f2b74459fe6ec8895c9c89de6724c07f1ec5611771f69b00a34"},
+  {"id": "trex", "from": "skintokens benchmark animal", "plan": "two-legged, long tail", "sha256": "aea2ff5fb9b38d8091d9c2a5524cf3399d31629268450eaa84abc9a580d2e975"},
+  {"id": "velociraptor", "from": "skintokens benchmark animal", "plan": "two-legged, long tail", "sha256": "7c753727933657405b81b72ef8b5ea8a382e7506045698e21ac13c6179c8927a"},
+  {"id": "wasp", "from": "skintokens benchmark animal", "plan": "many-legged, winged", "sha256": "1cc30d97e1d58eb4a31f761ab11daf9e1becd5b164da75f7bca26c47bd42a71a"},
+  {"id": "retopo bench 1", "from": "retopo's creature bench (owner's Tripo export)", "plan": "furred biped", "sha256": "12020ca6b4e7d5720fb30ee2058b20c18dde85a769ccb31a00e53ea86ff11085"},
+  {"id": "retopo bench 2", "from": "retopo's creature bench (owner's Tripo export)", "plan": "rooted creature", "sha256": "e785a21cfe523bf4c71eabf675cc5fbf1380cdf1643984f55f94da696624e045"},
+  {"id": "retopo bench 3", "from": "retopo's creature bench (owner's Tripo export)", "plan": "horned biped", "sha256": "c887c3fc3ee108ca18259592c7833b80673758d61bcfc190694a10f17c04f46c"},
+  {"id": "retopo bench 4", "from": "retopo's creature bench (owner's Tripo export)", "plan": "spined quadruped", "sha256": "16cd00ec6d77006636dc353f89f4d680b2ac61f5a7f163efb477c088657090c0"},
+  {"id": "retopo bench 5", "from": "retopo's creature bench (owner's Tripo export)", "plan": "mountain boss creature", "sha256": "bdbf90e1ecdc11acedaeddfcb98661f68d24258756c90a4cb9dc2b172736fb9c"}
+ ],
+ "held_out": [
+  {"id": "held-out 1", "plan": "four-legged with a tail", "why": "the common monster: a plain four-legged beast with a tail, the body the route was built for", "sha256": "3dd75109a15bd1a27be678152810cd4f8a2b6d081ef0a10531a2867a0ef63959"},
+  {"id": "held-out 2", "plan": "four-legged, long thin legs and spines", "why": "the hard four-legged one: insect-thin legs, spines off the back; earlier routes gave it no walk", "sha256": "9adb5d2a779cba68c0725b8f42451f4d130ace62fe5a88a6df61b78f51d6c286"},
+  {"id": "held-out 3", "plan": "two-legged, hunched, long clawed arms", "why": "a biped monster that leans forward on long arms", "sha256": "5242fead3e8ce445257159ef5c8138c7859a073bba5757cdbba0e4373871bd61"},
+  {"id": "held-out 4", "plan": "two-legged, gaunt and upright, long arms", "why": "a second biped monster, upright where held-out 3 is hunched", "sha256": "d833c8e1c6d042479145f98243252383f8d537f4fdb43e1bde00da109dac882f"},
+  {"id": "held-out 5", "plan": "many-limbed: a giant hand walking on its fingers", "why": "extra limbs: five limbs and no head", "sha256": "7c9b828e787c3178554bfcc19d2e7a10a35faa1ce0096b6779aba9df8b51db06"},
+  {"id": "held-out 6", "plan": "legless swimmer with a long tail and fins", "why": "a tail and no legs: a body that does not stand", "sha256": "47ea6c646fb38a96e27bc74d53b60276ac732cb0c12f00be868a8a0809b1263c"}
+ ],
+ "held_out_rules": [
+  "Picked from the owner's Tripo backlog by body plan before any run of creature.sh, from the creatures that are monsters (not human-shaped, cloaked or formless figures, not the companion moth).",
+  "None is in the dev set, in retopo's bench, in skintokens' video exam, or among the models tools/tripo_rig.py was first measured on (docs/tripo-rig.md, 2026-11-11).",
+  "All six were run through earlier versions of the route on 2026-11-12/13 for reports; no constant of the picker or of creature.sh is fitted on them."
+ ],
+ "picker_out_of_sample": {
+  "why": "~/Games/_refs holds no artist-rigged animal outside the dev set (its Khronos Fox is dev animal `fox`). These six come from the same CC0 packs as the 12 benchmark animals and were never in the picker's calibration, so they are out of sample but by the same artists.",
+  "animals": [
+   {"id": "stegosaurus", "from": "Quaternius Animated LowPoly Dinosaurs, CC0", "plan": "four-legged, tail, back plates", "sha256": "944a457338731a544a904a7c60d85d67c8f034c77e0205aae0ca3efc5711a002"},
+   {"id": "triceratops", "from": "Quaternius Animated LowPoly Dinosaurs, CC0", "plan": "four-legged, frill and horns", "sha256": "ad66b51cc5fc44c9a3429a5b1b98a61621af08d58d102d8a817499bd6a7f5b5a"},
+   {"id": "parasaurolophus", "from": "Quaternius Animated LowPoly Dinosaurs, CC0", "plan": "two-legged, long tail, crest", "sha256": "ad36fd5ba88ee96600fd7c286c8d9e7cb8810a408336fda4995b0caacb4e7f16"},
+   {"id": "llama", "from": "Quaternius LowPoly Animated Animals, CC0", "plan": "four-legged, long neck", "sha256": "3ff44fd03d5793701b228cf88f00e776f89afefdb3de0b226fee807908ae79c9"},
+   {"id": "frog", "from": "Quaternius Animated Easy Enemies, CC0", "plan": "four-legged hopper, long hind legs", "sha256": "76a40fb7400d43386e9a62c4af85e0a212d61a07aea4b34ccd6ad6d6943205f0"},
+   {"id": "snake", "from": "Quaternius Animated Easy Enemies, CC0", "plan": "legless", "sha256": "36bb0a014f38530a751738d8c6acc95ac6454a639939209c94738ffd98af56d0"}
+  ]
+ }
+}
