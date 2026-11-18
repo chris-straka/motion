@@ -61,7 +61,7 @@ export CREATURE_RIG_BIN=$SK_DIR/target/release/creature-rig
 export CREATURE_BENCH_BIN=$SK_DIR/target/release/creature-bench
 export WEIGHTS_BIN=$WF_DIR/rust/target/release/weights
 export RFCHECK_BIN=$RF_DIR/target/release/rfcheck
-export CREATURE_ROUTE_PY=$SK_DIR/tools/creature_route.py
+export CREATURE_ROUTE=$SK_DIR/tools/creature_route.py
 export TRIPO_TO_GLB=$_cr_here/tools/tripo_to_glb.py
 if [ -z "${BLENDER:-}" ]; then
   if [ -x /Applications/Blender.app/Contents/MacOS/Blender ]; then

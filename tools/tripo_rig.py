@@ -215,6 +215,8 @@ def main():
         cr = (a.creature_rig or os.environ.get("CREATURE_RIG_BIN") or shutil.which("creature-rig")
               or os.path.join(sib, "skintokens/target/release/creature-rig"))
         if os.path.exists(route) and os.path.exists(cr):
+            report["steps"]["creature_route"] = {"script": os.path.abspath(route), "creature_rig": os.path.abspath(cr)}
+            save()
             cmd = [sys.executable, route, a.model, a.out, "--name", name, "--class", klass, "--clean-mesh", mesh,
                    "--creature-rig", cr, "--skintokens", sk, "--motionforge", mf, "--weights", wf, "--rfcheck", rf,
                    "--seed", (a.seeds.split(",")[0] or "1"), "--fix-timeout", str(a.fix_timeout)]
