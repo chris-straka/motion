@@ -1,0 +1,32 @@
+{
+ "format": "creature-gates-fixture/1",
+ "made": "2026-11-18, before the first run of tools/creature.sh; never edited to get a pass",
+ "mesh": {
+  "file": "mesh.glb",
+  "sha256": "8b792a0e54ea36d3b852a83e89c9316e953766ef0b64a218c78199622484f21c"
+ },
+ "clean": "clean.glb",
+ "clean_sha256": "0f0e14758ecb6bb85ba285ad34d236bbb28a5b3d8054ce6a7b5668690138a1ad",
+ "planted": {
+  "swap": {
+   "file": "swap.glb",
+   "check": "anatomy",
+   "sha256": "6ed5b17e8c3223630d9b8943cb8f2fd681b2555d775f1bb2644db0656adc34d8"
+  },
+  "hole": {
+   "file": "hole.glb",
+   "check": "holes",
+   "sha256": "0af9ec369cdab630aba0d7cd586fd8211bd9e721e9799803175046ded1e2ea34"
+  },
+  "influence5": {
+   "file": "influence5.glb",
+   "check": "influences",
+   "sha256": "d5709f8e00b230d4f05b2b1221eb62dfb359784c8abedfb8e9660824c6f7de2e"
+  },
+  "overbudget": {
+   "file": "overbudget.glb",
+   "check": "tris",
+   "sha256": "f73ecc5a6b2988c1d3dd95225710492870b99fa127f6f40625b24a489d4e3dba"
+  }
+ }
+}

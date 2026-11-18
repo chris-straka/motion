@@ -25,3 +25,4 @@ venv/
 blender/tests/__pycache__/
 
 .DS_Store
+!tests/fixtures/creature_gates/*.glb
