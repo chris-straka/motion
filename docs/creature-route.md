@@ -190,3 +190,38 @@ file is which is kept off the repo on the machine that holds them (a map of
 A model's facing convention, used only when its own facing measures weak,
 follows its file type: Tripo's FBX faces +X; a glTF file faces +Z by the
 glTF spec.
+
+## Running it
+
+    fleet run --snapshot --gpu --cores 8 -- tools/creature.sh NAME MODEL OUT
+    fleet run --snapshot --gpu --cores 8 -- tools/creature_set.sh dev|held_out MAP OUTROOT [id ...]
+
+- `--gpu` because the learned rig (`skintokens rig`, three seeds, run twice)
+  wants the NVIDIA card; nothing in the command names a machine. The
+  machine's own settings (where its CUDA toolkit is) sit in
+  `~/.config/creature-route/env.sh` on that machine, outside every repo.
+- `tools/creature_deps.sh` builds the tools at origin/main into
+  `~/.cache/creature-route` (skintokens, weightforge, rfcheck, charkit;
+  motion is the job's own snapshot) and records each one's commit.
+- `MAP` is the machine's list of where each fixed input is (`id <tab> path
+  <tab> game name`); the set runner refuses a file whose sha256 is not the
+  one in `tools/creature_sets.json`. The dev set runs with
+  `CREATURE_SET=dev`: benchmark animals never go into the game repo, so
+  gate 9 is not run for them, and `gates.json` says so.
+- `OUT/gates.json`: every gate's pass, commands, exit codes and numbers;
+  `OUT/NAME.glb` the monster; `OUT/gate6/` the films (sheets, mp4s), the
+  judge's pack, its answers and its transcript (`judge.jsonl`: what it
+  opened); `OUT/gate9/` the game films and stills; `OUT/run1`, `OUT/run2`
+  the two runs.
+
+## What the gates can't say
+
+- meshweights' tears and bend findings were calibrated on human rigs; on
+  creatures they are a fault count, not a measure of quality. The blind
+  judge at the game camera (gate 6) and the game film (gate 9) are what
+  say a creature looks right.
+- rfcheck's Bevy loader checks were proven on Bevy 0.19.1; the games run
+  0.20. Gate 9 loads the file in the game itself, which is the real check.
+- The control pair of gate 6 is one strip shown twice: a judge that sees
+  two identical halves should say it can't tell, and that is the answer
+  the gate wants.
