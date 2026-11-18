@@ -89,7 +89,7 @@ def repo_checks(name, path):
     if name == "motion":
         return ["cd rust && cargo fmt --all --check",
                 "cd rust && cargo build --locked --release --all-targets 2>&1 | tee /dev/stderr | (! grep -E '^warning')",
-                "cd rust && cargo test --locked --release",
+                "cd rust && cargo test --locked --release --no-fail-fast",
                 "python3 -m unittest discover -s blender/tests -p 'test_pure.py'",
                 "python3 -m unittest discover -s python/tests -p 'test_*.py'",
                 "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
