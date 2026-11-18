@@ -211,6 +211,10 @@ def main():
         mod.ratio = o["tris"] / source_tris
         mod.use_collapse_triangulate = True
         bpy.ops.object.modifier_apply(modifier=mod.name)
+        # The cut can open new rims and leave old tangles: mend again, by the same rule.
+        holes_after_cut = mend_holes(obj, o["holes"])
+    else:
+        holes_after_cut = None
     vs = obj.data.vertices
     lo = Vector((min(v.co.x for v in vs), min(v.co.y for v in vs), min(v.co.z for v in vs)))
     hi = Vector((max(v.co.x for v in vs), max(v.co.y for v in vs), max(v.co.z for v in vs)))
@@ -239,6 +243,7 @@ def main():
         "height": round((hi.z - lo.z) * scale, 4),
         "textures": textures,
         "holes": holes,
+        "holes_after_cut": holes_after_cut,
     }
     bpy.ops.export_scene.gltf(filepath=o["out"], export_format="GLB", use_selection=False,
                               export_apply=True, export_yup=True, export_animations=False,

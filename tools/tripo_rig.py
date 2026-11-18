@@ -126,7 +126,9 @@ def main():
     ap.add_argument("--seeds", default="1,2,3")
     ap.add_argument("--tris", type=int, default=0)
     ap.add_argument("--height", type=float, default=0.0)
-    ap.add_argument("--convention", default="+x")
+    ap.add_argument("--convention", default="auto",
+                    help="the facing a weak measurement gives way to: auto = by file type (Tripo's FBX faces +x; "
+                         "a glTF file faces +z by the spec, so none), or +x|-x|+y|-y|none")
     ap.add_argument("--no-fix", action="store_true")
     ap.add_argument("--fix-args", default="")
     ap.add_argument("--fix-timeout", type=int, default=1800)
@@ -151,13 +153,15 @@ def main():
     blender = find("blender", a.blender, "BLENDER", [], first=["/Applications/Blender.app/Contents/MacOS/Blender"])
     sk = find("skintokens", a.skintokens, "SKINTOKENS_BIN", [os.path.join(sib, "skintokens/target/release/skintokens")])
     mf = find("motionforge", a.motionforge, "MOTIONFORGE_BIN", [os.path.join(repo, "rust/target/release/motionforge")])
-    wf = find("weights", a.weights, "WEIGHTS_BIN", [os.path.join(sib, "weightforge/rust/target/release/weights")])
+    wf = find("weights", a.weights, "WEIGHTS_BIN", [os.path.join(sib, "meshweights/rust/target/release/weights")])
     rf = find("rfcheck", a.rfcheck, "RFCHECK_BIN", [os.path.join(sib, "rfcheck/target/release/rfcheck"),
                                                      os.path.join(home, ".cargo/bin/rfcheck")])
     unfuse = a.unfuse_tool or os.environ.get("UNFUSE_PY") or os.path.join(sib, "meshkit/tools/unfuse.py")
     if a.unfuse and not os.path.exists(unfuse):
         raise SystemExit(f"unfuse.py not found at {unfuse}: pass --unfuse-tool or set UNFUSE_PY")
     name = a.name or os.path.basename(os.path.dirname(os.path.abspath(a.model))) or "model"
+    if a.convention == "auto":
+        a.convention = "+x" if a.model.lower().endswith(".fbx") else "none"
     os.makedirs(a.out, exist_ok=True)
     report = {"model": os.path.abspath(a.model), "name": name, "steps": {}, "tries": []}
 
@@ -175,6 +179,9 @@ def main():
         cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(repo, "tools/tripo_to_glb.py"), "--",
                a.model, mesh, "--kind", kind_arg, "--convention", a.convention, "--tris", str(tris),
                "--height", str(a.height)]
+        if a.klass == "monster":
+            # a monster's skin is closed: every rim is mended, not only the short ones
+            cmd += ["--holes", "1.0"]
         r = run(cmd, timeout=900)
         line = [ln for ln in r["out"].splitlines() if ln.startswith("TRIPO_TO_GLB ")]
         if r["code"] != 0 or not line:
