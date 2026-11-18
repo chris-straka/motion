@@ -49,7 +49,7 @@ pub struct Parts {
     pub tail: Vec<usize>,
 }
 
-fn children(c: &Creature, bone: usize) -> Vec<usize> {
+pub(super) fn children(c: &Creature, bone: usize) -> Vec<usize> {
     (0..c.skeleton.len())
         .filter(|&i| c.skeleton.bones[i].parent == Some(bone))
         .collect()
@@ -57,7 +57,7 @@ fn children(c: &Creature, bone: usize) -> Vec<usize> {
 
 /// The chain from `start` to a leaf, at each fork taking the child whose
 /// subtree reaches farthest along `dir`.
-fn chain_toward(c: &Creature, start: usize, dir: Vec3, skip: &[usize]) -> Vec<usize> {
+pub(super) fn chain_toward(c: &Creature, start: usize, dir: Vec3, skip: &[usize]) -> Vec<usize> {
     fn reach(c: &Creature, bone: usize, dir: Vec3) -> f64 {
         let b = &c.skeleton.bones[bone];
         let mut best = b.head.dot(dir).max(b.tail.dot(dir));
@@ -87,7 +87,7 @@ fn chain_toward(c: &Creature, start: usize, dir: Vec3, skip: &[usize]) -> Vec<us
 }
 
 /// The profile's left (Z up): up cross forward.
-fn left_of(c: &Creature) -> Vec3 {
+pub(super) fn left_of(c: &Creature) -> Vec3 {
     Vec3::new(0.0, 0.0, 1.0).cross(c.forward).normalized()
 }
 
@@ -208,7 +208,7 @@ fn turn(c: &Creature, bone: usize, axis: Vec3, angle: f64) -> Quat {
     Quat::from_axis_angle(local.normalized(), angle)
 }
 
-struct Poser<'a> {
+pub(super) struct Poser<'a> {
     c: &'a Creature,
     quats: Vec<Quat>,
     /// Turning about it swings a hanging bone's tip forward, and lifts the
@@ -216,11 +216,11 @@ struct Poser<'a> {
     pitch: Vec3,
     up: Vec3,
     /// The whole body moved (world), on the root.
-    shift: Vec3,
+    pub(super) shift: Vec3,
 }
 
 impl<'a> Poser<'a> {
-    fn new(c: &'a Creature) -> Self {
+    pub(super) fn new(c: &'a Creature) -> Self {
         let up = Vec3::new(0.0, 0.0, 1.0);
         Poser {
             c,
@@ -230,30 +230,30 @@ impl<'a> Poser<'a> {
             shift: Vec3::ZERO,
         }
     }
-    fn add(&mut self, bone: usize, axis: Vec3, degrees: f64) {
+    pub(super) fn add(&mut self, bone: usize, axis: Vec3, degrees: f64) {
         let q = turn(self.c, bone, axis, degrees.to_radians());
         self.quats[bone] = q.mul(self.quats[bone]).normalized();
     }
     /// Swing forward (a leg bone) or lift (a spine, neck or tail bone).
-    fn pitch(&mut self, bone: usize, degrees: f64) {
+    pub(super) fn pitch(&mut self, bone: usize, degrees: f64) {
         self.add(bone, self.pitch, degrees);
     }
     /// Turn to the left.
-    fn yaw(&mut self, bone: usize, degrees: f64) {
+    pub(super) fn yaw(&mut self, bone: usize, degrees: f64) {
         self.add(bone, self.up, degrees);
     }
     /// `degrees` in all, shared along a chain.
-    fn pitch_chain(&mut self, bones: &[usize], degrees: f64) {
+    pub(super) fn pitch_chain(&mut self, bones: &[usize], degrees: f64) {
         for &b in bones {
             self.pitch(b, degrees / bones.len() as f64);
         }
     }
-    fn yaw_chain(&mut self, bones: &[usize], degrees: f64) {
+    pub(super) fn yaw_chain(&mut self, bones: &[usize], degrees: f64) {
         for &b in bones {
             self.yaw(b, degrees / bones.len() as f64);
         }
     }
-    fn frame(self) -> Frame {
+    pub(super) fn frame(self) -> Frame {
         make_frame(self.c, &self.quats, self.shift)
     }
 }
@@ -562,7 +562,7 @@ pub fn stride(c: &Creature, parts: &Parts, gait: Gait, fps: f64) -> Stride {
     }
 }
 
-fn smooth(x: f64) -> f64 {
+pub(super) fn smooth(x: f64) -> f64 {
     let x = x.clamp(0.0, 1.0);
     x * x * (3.0 - 2.0 * x)
 }

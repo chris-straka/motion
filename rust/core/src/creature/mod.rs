@@ -8,6 +8,7 @@
 //! Spec: docs/creature.md.
 
 pub mod align;
+pub mod anybody;
 pub mod camera;
 pub mod compare;
 pub mod detect;

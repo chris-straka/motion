@@ -53,6 +53,7 @@ commands:\n\
   creature-solve    two-view detections -> clip (+ GLB animation)\n\
   creature-compare  score a solved clip against its truth, bone by bone\n\
   creature-gait     a quadruped's parts, a walk and a lunge on its own skeleton, its range of motion\n\
+  creature-clips    an idle and an attack for a creature of any body plan, on its own skeleton\n\
 \n\
 retarget flags:\n\
   --source <clip> --target <skeleton|clip> --map <bonemap> --output <clip>\n\
@@ -174,6 +175,9 @@ creature-compare flags:\n\
 creature-gait flags:\n\
   --creature <creature> [--glb-in <rig glb> --glb-out <glb>] [--clips walk,trot,walk_spot,attack] [--clips-json <dir>]\n\
   [--frames 24] [--fps 24] [--rom <weightforge pose set .ron>]\n\
+\n\
+creature-clips flags:\n\
+  --creature <creature> --glb-in <rig glb> --glb-out <glb> [--clips idle,attack] [--fps 24]\n\
 \n\
 global: --help/-h, --version/-v, --time (wall ms on stderr)\n";
 
@@ -746,6 +750,7 @@ fn real_main(argv: &[String]) -> (i32, Option<String>) {
             "creature-solve" => creature_cmds::cmd_solve(&args),
             "creature-compare" => creature_cmds::cmd_compare(&args),
             "creature-gait" => creature_cmds::cmd_gait(&args),
+            "creature-clips" => creature_cmds::cmd_clips(&args),
             other => Err((1, format!("unknown command '{}'; try --help", other))),
         },
         Err(e) => Err(e),

@@ -5,6 +5,7 @@
 use crate::{parse_f64, parse_usize, read_file, write_file, Cmd};
 use motion_core::clip::{emit_clip, parse_clip};
 use motion_core::creature::align::{prepare, TimeMode};
+use motion_core::creature::anybody;
 use motion_core::creature::compare::compare;
 use motion_core::creature::detect::{project_clip, Detections};
 use motion_core::creature::gait;
@@ -500,5 +501,85 @@ pub fn cmd_compare(cmd: &Cmd) -> Result<String, (i32, String)> {
         write_file(p, &emit_pretty(&scores.to_json()).map_err(|e| (3, e))?)?;
         r.push_str(&format!("output: {}\n", p));
     }
+    Ok(r)
+}
+
+/// creature-clips --creature c.json --glb-in rig.glb --glb-out out.glb
+/// [--clips idle,attack] [--fps 24]
+///
+/// An idle and an attack for a creature of any body plan (two-legged,
+/// winged, many-limbed, legless), its parts read from the skeleton's
+/// shape; bones a planted foot hangs from stay still. The clips go into
+/// the rig given (its own joints, by name), beside any clips it has.
+pub fn cmd_clips(cmd: &Cmd) -> Result<String, (i32, String)> {
+    let c = load_creature(cmd)?;
+    let fps = parse_f64(cmd, "fps", 24.0)?;
+    if !(fps > 0.0 && fps <= 1e4) {
+        return Err((1, "--fps must be in (0, 1e4]".into()));
+    }
+    let body = anybody::read(&c);
+    let name = |b: usize| c.skeleton.bones[b].name.as_str();
+    let list = |bones: &[usize]| {
+        bones
+            .iter()
+            .map(|&b| name(b))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut r = String::new();
+    r.push_str("=== motionforge creature-clips ===\n");
+    r.push_str(&format!("front: {}\n", list(&body.front)));
+    r.push_str(&format!("back: {}\n", list(&body.back)));
+    for leg in &body.legs {
+        r.push_str(&format!("leg: {}\n", list(leg)));
+    }
+    for arm in &body.arms {
+        r.push_str(&format!("arm: {}\n", list(arm)));
+    }
+    r.push_str(&format!(
+        "free to move: front {}, back {}; {}\n",
+        body.free_front().len(),
+        body.free_back().len(),
+        if body.floats {
+            "stands on nothing"
+        } else {
+            "stands on its feet"
+        }
+    ));
+    let (gi, go) = (cmd.required("glb-in")?, cmd.required("glb-out")?);
+    let mut doc = Document::read(gi).map_err(|e| (2, format!("glb-in: {}", e)))?;
+    let have: Vec<String> = doc
+        .array("animations")
+        .iter()
+        .filter_map(|a| a.get("name").and_then(|n| n.as_str()).map(str::to_string))
+        .collect();
+    let wanted = cmd.get("clips").unwrap_or("idle,attack");
+    for clip_name in wanted.split(',').filter(|s| !s.is_empty()) {
+        if have.iter().any(|h| h == clip_name) {
+            return Err((
+                1,
+                format!("the rig already has a clip named '{}'", clip_name),
+            ));
+        }
+        let clip = match clip_name {
+            "idle" => anybody::idle(&c, &body, (3.0 * fps).round() as usize, fps),
+            "attack" => anybody::attack(&c, &body, fps.round() as usize, fps),
+            other => {
+                return Err((
+                    1,
+                    format!("--clips: unknown clip '{}' (idle, attack)", other),
+                ))
+            }
+        };
+        doc = clip_to_glb(&doc, &clip, clip_name).map_err(|e| (3, e))?;
+        r.push_str(&format!(
+            "clip {}: {} frames at {} fps\n",
+            clip_name,
+            clip.frames.len(),
+            fps
+        ));
+    }
+    doc.write(go).map_err(|e| (3, e))?;
+    r.push_str(&format!("glb: {}\n", go));
     Ok(r)
 }
