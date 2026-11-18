@@ -266,7 +266,6 @@ pub fn idle(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
 pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
     let up = Vec3::new(0.0, 0.0, 1.0);
     let down = up.scale(-1.0);
-    let back_dir = c.forward.scale(-1.0);
     let front = body.free_front();
     let back = body.free_back();
     let strikers = body.strikers(c);
@@ -283,22 +282,29 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
         if !front.is_empty() {
             let (head, rest) = front.split_last().unwrap();
             if !rest.is_empty() {
-                p.pitch_chain(rest, 14.0 * rear - 24.0 * strike);
+                p.pitch_chain(rest, 18.0 * rear - 32.0 * strike);
             }
-            p.pitch(*head, 8.0 * rear - 14.0 * strike);
+            p.pitch(*head, 12.0 * rear - 18.0 * strike);
         }
         if !back.is_empty() {
-            p.pitch_chain(&back, 16.0 * rear + 8.0 * strike);
+            // the tail goes against the body: down as it rears, up as it strikes
+            p.pitch_chain(&back, -8.0 * rear + 14.0 * strike);
         }
         for arm in &strikers {
             let top = arm[0];
-            // drawn back and up, then swung through forward and down
-            p.add(top, axis_toward(c, top, back_dir, up), 35.0 * rear);
-            p.add(top, axis_toward(c, top, up, back_dir), 25.0 * rear);
-            p.add(top, axis_toward(c, top, c.forward, down), 75.0 * strike);
+            // raised up and out in front, then swung down through the strike
+            p.add(top, axis_toward(c, top, up, c.forward), 40.0 * rear);
+            p.add(
+                top,
+                axis_toward(c, top, c.forward, down),
+                15.0 * rear + 55.0 * strike,
+            );
             if let Some(&elbow) = arm.get(1) {
-                p.add(elbow, axis_toward(c, elbow, up, back_dir), 30.0 * rear);
-                p.add(elbow, axis_toward(c, elbow, c.forward, down), 20.0 * strike);
+                p.add(
+                    elbow,
+                    axis_toward(c, elbow, up, c.forward),
+                    25.0 * rear - 10.0 * strike,
+                );
             }
         }
         if body.floats {
@@ -309,6 +315,39 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
             }
         }
         out.push(p.frame());
+    }
+    Clip {
+        fps,
+        skeleton: c.skeleton.clone(),
+        frames: out,
+    }
+}
+
+/// A test clip, never shipped: each side limb in turn (legs too, lifted
+/// off the ground) swings forward and folds and comes back, `frames_each`
+/// frames a limb. Filmed beside the same rig with its limbs swapped, it
+/// shows whether a swap can be seen at all (gate 6's planted case): an
+/// idle or attack that leaves a biped's legs still hides one.
+pub fn sweep(c: &Creature, body: &Body, frames_each: usize, fps: f64) -> Clip {
+    let up = Vec3::new(0.0, 0.0, 1.0);
+    let mut limbs: Vec<&Vec<usize>> = body.legs.iter().chain(body.arms.iter()).collect();
+    limbs.sort_by_key(|l| l[0]);
+    let mut out = Vec::with_capacity(frames_each * limbs.len().max(1));
+    for limb in &limbs {
+        for f in 0..frames_each {
+            let t = f as f64 / frames_each as f64;
+            let s = detmath::sin(std::f64::consts::PI * t);
+            let mut p = Poser::new(c);
+            let top = limb[0];
+            p.add(top, axis_toward(c, top, c.forward, up), 35.0 * s);
+            if let Some(&mid) = limb.get(1) {
+                p.add(mid, axis_toward(c, mid, up, c.forward), 30.0 * s);
+            }
+            out.push(p.frame());
+        }
+    }
+    if out.is_empty() {
+        out.push(Poser::new(c).frame());
     }
     Clip {
         fps,

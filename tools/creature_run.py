@@ -221,9 +221,9 @@ def gate_planted(glb, work):
 
 # ------------------------------------------------------------- gate 6
 
-def film(blender, glb, clip, prefix, crop=None, video=None, measure=False):
+def film(blender, glb, clip, prefix, crop=None, video=None, measure=False, frames=8):
     cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(HERE, "creature_film.py"), "--",
-           "--glb", glb, "--clip", clip, "--out", prefix, "--frames", "8"]
+           "--glb", glb, "--clip", clip, "--out", prefix, "--frames", str(frames)]
     if crop:
         cmd += ["--crop", ",".join(str(c) for c in crop)]
     if video:
@@ -253,8 +253,8 @@ def side_by_side(left, right, out):
 
 
 JUDGE_PROMPT = """You are checking creature animation for a video game, as a player would see it.
-The pictures in this folder are item_01.png to item_{n:02d}.png. Each is a film strip: 8 frames of one
-clip in time order, left to right, top row then bottom row, seen from the game's camera. Some items are
+The pictures in this folder are item_01.png to item_{n:02d}.png. Each is a film strip: frames of one
+clip in time order, left to right, row by row, seen from the game's camera. Some items are
 two strips side by side (a LEFT half and a RIGHT half, split by a white band). questions.json says which
 kind each item is and what the clip is. Read questions.json, then open every picture and look closely.
 
@@ -304,16 +304,28 @@ def gate_judge(name, glb, work, blender):
     ctrl = os.path.join(work, "control.png")
     side_by_side(films[move["name"]]["sheet"], films[move["name"]]["sheet"], ctrl)
     items.append({"category": "control", "clip": move["name"], "image": ctrl, "expected": "cant_tell"})
-    # the planted pair: this creature with its limbs swapped, on the clip that moves its limbs most
+    # the planted pair: a copy of this creature with a test clip that swings each limb in turn
+    # (`creature-clips --clips sweep`; an idle or attack can leave legs still and hide a swap),
+    # beside the same copy with its limbs swapped. Neither copy ships.
+    mf = os.environ.get("MOTIONFORGE_BIN") or shutil.which("motionforge")
+    prof, sweep = os.path.join(work, "sweep.creature.json"), os.path.join(work, f"{name}_sweep.glb")
+    r = sh([mf, "creature-profile", "--rig", glb, "--output", prof, "--clean-glb", os.path.join(work, "sweep.clean.glb"),
+            "--report", os.path.join(work, "sweep.profile.json"), "--name", name])
+    if r["exit"] != 0:
+        raise RuntimeError("creature-profile for the sweep: " + tail(r["err"] or r["out"], 300))
+    r = sh([mf, "creature-clips", "--creature", prof, "--glb-in", glb, "--glb-out", sweep, "--clips", "sweep"])
+    if r["exit"] != 0:
+        raise RuntimeError("creature-clips --clips sweep: " + tail(r["err"] or r["out"], 300))
+    limbs = sum(1 for ln in r["out"].splitlines() if ln.startswith(("leg:", "arm:")))
     planted = os.path.join(work, f"{name}_planted_swap.glb")
-    cg.plant("swap", glb, planted)
-    pclip = max((move, att), key=lambda c: c["turn_deg"])["name"]
-    m1 = film(blender, glb, pclip, os.path.join(frames, "m1"), measure=True)
-    m2 = film(blender, planted, pclip, os.path.join(frames, "m2"), measure=True)
+    cg.plant("swap", sweep, planted)
+    pclip, pn = "sweep", 4 * max(1, limbs)
+    m1 = film(blender, sweep, pclip, os.path.join(frames, "m1"), measure=True, frames=pn)
+    m2 = film(blender, planted, pclip, os.path.join(frames, "m2"), measure=True, frames=pn)
     crop = [min(m1["crop"][0], m2["crop"][0]), max(m1["crop"][1], m2["crop"][1]),
             min(m1["crop"][2], m2["crop"][2]), max(m1["crop"][3], m2["crop"][3])]
-    a = film(blender, glb, pclip, os.path.join(frames, "pc"), crop=crop)
-    b = film(blender, planted, pclip, os.path.join(frames, "pp"), crop=crop)
+    a = film(blender, sweep, pclip, os.path.join(frames, "pc"), crop=crop, frames=pn)
+    b = film(blender, planted, pclip, os.path.join(frames, "pp"), crop=crop, frames=pn)
     sa, sb = os.path.join(work, "planted_clean.png"), os.path.join(work, "planted_swap.png")
     tile(a["pngs"], sa)
     tile(b["pngs"], sb)
@@ -328,9 +340,10 @@ def gate_judge(name, glb, work, blender):
         it["item"] = i
         shutil.copyfile(it["image"], os.path.join(pack, f"item_{i:02d}.png"))
         what = "attack" if it["category"] == "film" and it.get("attack_clip") else it["clip"]
+        clip_words = {"attack": "an attack", "sweep": "a test clip: each limb in turn swings forward, folds and comes back"}
         questions[str(i)] = {"image": f"item_{i:02d}.png",
                              "kind": "single" if it["category"] == "film" else "pair",
-                             "clip": "an attack" if what == "attack" else f"the '{it['clip']}' clip"}
+                             "clip": clip_words.get(what, f"the '{it['clip']}' clip")}
     json.dump({"items": questions}, open(os.path.join(pack, "questions.json"), "w"), indent=1)
     json.dump({"seed": JUDGE_SEED, "items": items}, open(keyp, "w"), indent=1)
     # the judge: a fresh session that sees the pack only

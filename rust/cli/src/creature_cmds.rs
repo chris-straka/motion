@@ -564,10 +564,11 @@ pub fn cmd_clips(cmd: &Cmd) -> Result<String, (i32, String)> {
         let clip = match clip_name {
             "idle" => anybody::idle(&c, &body, (3.0 * fps).round() as usize, fps),
             "attack" => anybody::attack(&c, &body, fps.round() as usize, fps),
+            "sweep" => anybody::sweep(&c, &body, (0.75 * fps).round() as usize, fps),
             other => {
                 return Err((
                     1,
-                    format!("--clips: unknown clip '{}' (idle, attack)", other),
+                    format!("--clips: unknown clip '{}' (idle, attack, sweep)", other),
                 ))
             }
         };
