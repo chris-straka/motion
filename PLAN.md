@@ -3,7 +3,7 @@
 Written 2026-10-01 for the coding agents who will build it. Goal: make
 game animation for a stylized action game (Bevy/Rust) fast for one
 person. Context: `~/Games/_tools/roadmap.md`, `~/Games/_tools/asset-pipeline.md`
-("Animation" section). The rig is rigforge's (`~/Games/_blender/rigforge`,
+("Animation" section). The rig is rigforge's (`~/Games/_blender/gamerig`,
 Rigify-based, presets `biped_hero` and `quadruped_stalker`).
 
 ## What it does (three features, in build order)
@@ -33,7 +33,7 @@ Rigify-based, presets `biped_hero` and `quadruped_stalker`).
 
 - Blender extension (GPL-3.0-or-later) for the UI and Blender I/O.
 - Core math + model inference in a Rust CLI or library (MIT), same split
-  as `~/Games/_blender/retopoforge` (subprocess over files, deterministic).
+  as `~/Games/_blender/retopo` (subprocess over files, deterministic).
 - Training in Python (PyTorch, local on an Apple M4, 16 GB). Exported
   model (ONNX or a small custom format) runs on CPU in the Rust core.
 

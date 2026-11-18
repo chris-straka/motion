@@ -1,8 +1,8 @@
-# motionforge
+# motion (command `motionforge`)
 
 Game-animation sidekick for Bevy/Rust games: retarget
 assist, motion stylizer, physics pass, ML AutoPose, and the GLB rig
-adapters genforge's character chain runs (standardize, animate,
+adapters assetgen's character chain runs (standardize, animate,
 pose-test; `docs/adapters.md`). One person,
 one panel, no mocap cleanup marathons. Plan and gates: `PLAN.md`;
 measured numbers: `docs/measurements.md`.
@@ -13,7 +13,7 @@ measured numbers: `docs/measurements.md`.
   dependencies, offline build, byte-deterministic. All math lives here.
 - `blender/motionforge/` — GPL Blender extension (panel + operators).
   Talks to the CLI only as a subprocess over clip JSON files, same
-  split as retopoforge. `blender/tools/batch_retarget.py` is the P3
+  split as retopo. `blender/tools/batch_retarget.py` is the P3
   BVH batch driver.
 - `python/autopose/` — PyTorch training for AutoPose (local, M4).
   Dataset loading, weights export, and evaluation are stdlib-only;
@@ -53,7 +53,7 @@ motionforge fixture-glb --output test.glb --naming mixamo|plain|def [--twisted] 
 motionforge adapter standardize|animate|pose-test IN.glb OUT.glb RESULT.json [flags]
 ```
 
-The GLB commands and the genforge `adapter` contract are in
+The GLB commands and the assetgen `adapter` contract are in
 `docs/adapters.md` (standard humanoid skeleton, mapping rules, limits).
 `animate` ends with the **contact pass** (`docs/contact.md`): collision
 proxies fitted to the character's mesh, two-bone arm IK that eases the
