@@ -567,9 +567,10 @@ pub(super) fn smooth(x: f64) -> f64 {
     x * x * (3.0 - 2.0 * x)
 }
 
-/// A lunge: sink onto folded legs with the head low and the tail up, then
-/// throw the body, the forelegs and the head forward, and come back to
-/// standing. It starts and ends at rest.
+/// A lunge: sink onto folded legs with the head drawn up and back and the
+/// tail up, then throw the body and the forelegs forward and snap the head
+/// down into the bite, and come back to standing. It starts and ends at
+/// rest.
 pub fn attack(c: &Creature, parts: &Parts, frames: usize, fps: f64) -> Clip {
     let mut out = Vec::with_capacity(frames);
     for f in 0..frames {
@@ -593,8 +594,10 @@ pub fn attack(c: &Creature, parts: &Parts, frames: usize, fps: f64) -> Clip {
             }
         }
         p.pitch_chain(&parts.spine, -10.0 * crouch + 6.0 * strike);
-        // The head low in the crouch, then thrown out level with the back.
-        p.pitch_chain(&parts.neck, -22.0 * crouch - 8.0 * strike);
+        // The head drawn up and back as the body coils, then snapped down and
+        // forward through the strike: a bite reads at the game camera where
+        // a lowered head did not (the dev set's blind judge, 2026-11-18).
+        p.pitch_chain(&parts.neck, 14.0 * crouch - 28.0 * strike);
         p.pitch_chain(&parts.tail, 25.0 * crouch + 10.0 * strike);
         // The body sinks, then goes with the strike.
         p.shift = c.forward.scale(c.height * (0.16 * strike - 0.03 * crouch))

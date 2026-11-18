@@ -193,6 +193,53 @@ def mend_holes(obj, limit):
     return out
 
 
+def cap_rims(obj, limit):
+    """Rims the hole fill could not close (one that touches itself or
+    another, or runs along an edge three faces share: a generator's
+    tangle) and that are no longer than `limit` of the model's largest
+    side: each is capped with a fan from its middle, every open edge given
+    the face it lacks, wound like its neighbour, coloured from it. Returns
+    the counts."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.edges.ensure_lookup_table()
+    size = max(obj.dimensions) or 1.0
+    uv = bm.loops.layers.uv.active
+    loops = boundary_loops(bm)
+    capped = 0
+    for lp in loops:
+        if sum(e.calc_length() for e in lp) > limit * size:
+            continue
+        verts = {v for e in lp for v in e.verts}
+        mid = bm.verts.new(sum((v.co for v in verts), Vector()) / len(verts))
+        for e in lp:
+            if len(e.link_faces) != 1:
+                continue
+            f = e.link_faces[0]
+            corner = next(c for c in f.loops if c.edge == e)
+            a_, b_ = corner.vert, corner.link_loop_next.vert
+            try:
+                nf = bm.faces.new((b_, a_, mid))
+            except ValueError:
+                continue
+            nf.material_index = f.material_index
+            nf.smooth = True
+            if uv:
+                at = {c.vert: c[uv].uv.copy() for c in f.loops}
+                for c in nf.loops:
+                    if c.vert in at:
+                        c[uv].uv = at[c.vert]
+                    else:
+                        c[uv].uv = sum((at[v] for v in (a_, b_)), at[a_] * 0) / 2
+        capped += 1
+    left = boundary_loops(bm)
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return {"rims": len(loops), "capped": capped, "left": len(left)}
+
+
 def tris(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
@@ -215,6 +262,8 @@ def main():
         holes_after_cut = mend_holes(obj, o["holes"])
     else:
         holes_after_cut = None
+    # What the fill left (tangled rims) is capped, by the same limit.
+    capped = cap_rims(obj, o["holes"])
     vs = obj.data.vertices
     lo = Vector((min(v.co.x for v in vs), min(v.co.y for v in vs), min(v.co.z for v in vs)))
     hi = Vector((max(v.co.x for v in vs), max(v.co.y for v in vs), max(v.co.z for v in vs)))
@@ -244,6 +293,7 @@ def main():
         "textures": textures,
         "holes": holes,
         "holes_after_cut": holes_after_cut,
+        "capped": capped,
     }
     bpy.ops.export_scene.gltf(filepath=o["out"], export_format="GLB", use_selection=False,
                               export_apply=True, export_yup=True, export_animations=False,
