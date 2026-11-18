@@ -390,24 +390,42 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
 }
 
 /// A test clip, never shipped: each side limb in turn (legs too, lifted
-/// off the ground) swings forward and folds and comes back, `frames_each`
-/// frames a limb. Filmed beside the same rig with its limbs swapped, it
-/// shows whether a swap can be seen at all (gate 6's planted case): an
-/// idle or attack that leaves a biped's legs still hides one.
+/// off the ground) swings forward and out to its own side, folds, and
+/// comes back, `frames_each` frames a limb. Filmed beside the same rig with
+/// its limbs swapped, it shows whether a swap can be seen at all (gate 6's
+/// planted case): a limb's skin hung on its mirror partner's bones moves
+/// just like the real thing when it only swings forward (the two pivots
+/// differ only along that axis), and goes through the body when it swings
+/// out.
 pub fn sweep(c: &Creature, body: &Body, frames_each: usize, fps: f64) -> Clip {
     let up = Vec3::new(0.0, 0.0, 1.0);
+    let left = left_of(c);
+    let mid = c
+        .skeleton
+        .bones
+        .iter()
+        .map(|b| b.head.dot(left))
+        .sum::<f64>()
+        / c.skeleton.len().max(1) as f64;
     let mut limbs: Vec<&Vec<usize>> = body.legs.iter().chain(body.arms.iter()).collect();
     limbs.sort_by_key(|l| l[0]);
     let mut out = Vec::with_capacity(frames_each * limbs.len().max(1));
     for limb in &limbs {
+        let tip = c.skeleton.bones[*limb.last().unwrap()].tail;
+        let outward = if tip.dot(left) >= mid {
+            left
+        } else {
+            left.scale(-1.0)
+        };
         for f in 0..frames_each {
             let t = f as f64 / frames_each as f64;
             let s = detmath::sin(std::f64::consts::PI * t);
             let mut p = Poser::new(c);
             let top = limb[0];
-            p.add(top, axis_toward(c, top, c.forward, up), 35.0 * s);
-            if let Some(&mid) = limb.get(1) {
-                p.add(mid, axis_toward(c, mid, up, c.forward), 30.0 * s);
+            p.add(top, axis_toward(c, top, c.forward, up), 30.0 * s);
+            p.add(top, axis_toward(c, top, outward, up), 30.0 * s);
+            if let Some(&mid_bone) = limb.get(1) {
+                p.add(mid_bone, axis_toward(c, mid_bone, up, c.forward), 30.0 * s);
             }
             out.push(p.frame());
         }
