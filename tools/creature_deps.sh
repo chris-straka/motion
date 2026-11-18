@@ -6,8 +6,9 @@
 #   -> MOTIONFORGE_BIN SKINTOKENS_BIN CREATURE_RIG_BIN CREATURE_BENCH_BIN WEIGHTS_BIN RFCHECK_BIN BLENDER,
 #      CREATURE_DEP_DIRS (repo=checkout, space separated) and CREATURE_DEP_SHAS (repo@sha)
 # motion is this checkout (the job's snapshot); skintokens, weightforge (meshweights) and rfcheck
-# are cloned from GitHub into $CREATURE_DEPS (default ~/.cache/creature-route) at origin/main,
-# or SKINTOKENS_REF=..., WEIGHTFORGE_REF=..., RFCHECK_REF=....
+# and charkit (the game step) are cloned from GitHub into $CREATURE_DEPS (default
+# ~/.cache/creature-route) at origin/main, or SKINTOKENS_REF=..., WEIGHTFORGE_REF=..., RFCHECK_REF=...,
+# CHARKIT_REF=....
 # The machine's own settings (where its CUDA toolkit is) come from $CREATURE_ROUTE_ENV, default
 # ~/.config/creature-route/env.sh, when that file exists. With CUDA_ROOT set, skintokens is built
 # for the NVIDIA card; on macOS it uses Metal; otherwise the CPU.
@@ -39,6 +40,7 @@ _cr_fail() { echo "creature_deps: $*" >&2; return 1; }
 SK_DIR=$(_cr_dep skintokens "${SKINTOKENS_REF:-origin/main}") || _cr_fail "no skintokens checkout"
 WF_DIR=$(_cr_dep weightforge "${WEIGHTFORGE_REF:-origin/main}") || _cr_fail "no weightforge checkout"
 RF_DIR=$(_cr_dep rfcheck "${RFCHECK_REF:-origin/main}") || _cr_fail "no rfcheck checkout"
+CK_DIR=$(_cr_dep charkit "${CHARKIT_REF:-origin/main}") || _cr_fail "no charkit checkout"
 
 _cr_build "$_cr_here/rust" --locked || _cr_fail "motionforge did not build"
 if [ -n "${CUDA_ROOT:-}" ]; then
@@ -70,7 +72,7 @@ fi
 for _b in MOTIONFORGE_BIN SKINTOKENS_BIN CREATURE_RIG_BIN CREATURE_BENCH_BIN WEIGHTS_BIN RFCHECK_BIN BLENDER; do
   [ -x "${!_b}" ] || _cr_fail "$_b missing (${!_b})"
 done
-export CREATURE_DEP_DIRS="motion=$_cr_here skintokens=$SK_DIR meshweights=$WF_DIR rfcheck=$RF_DIR"
+export CREATURE_DEP_DIRS="motion=$_cr_here skintokens=$SK_DIR meshweights=$WF_DIR rfcheck=$RF_DIR charkit=$CK_DIR"
 CREATURE_DEP_SHAS=""
 for _p in $CREATURE_DEP_DIRS; do
   CREATURE_DEP_SHAS="$CREATURE_DEP_SHAS ${_p%%=*}@$(git -C "${_p#*=}" rev-parse --short HEAD)"
