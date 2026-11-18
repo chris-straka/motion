@@ -6,12 +6,14 @@
 //! something to stand in and something to strike with.
 //!
 //! The body (`read`):
-//! - the centre line: bones whose head and tail both lie near the mirror
-//!   plane. From the hierarchy root the *front chain* follows the centre
-//!   child reaching farthest forward and up (a quadruped's spine to its
-//!   head, a biped's spine up to its head, a fish's body to its snout);
-//!   the *back chain* is the centre branch reaching farthest back from the
-//!   first part of the front chain (a tail);
+//! - the centre line, followed by structure: from the hierarchy root, at
+//!   each bone the child nearest the mirror plane goes on (of those about
+//!   as near, the one reaching farthest forward and up), so a generated
+//!   body's spine that wanders sideways is still its spine. That is the
+//!   *front chain* (a quadruped's spine to its head, a biped's spine up to
+//!   its head, a fish's body to its snout); the *back chain* is the centre
+//!   branch reaching farthest back from the front chain's first third (a
+//!   tail);
 //! - side chains: every branch leaving the centre line sideways, from its
 //!   first bone out to a leaf; one whose subtree holds a foot (a bone the
 //!   creature stands on, from the profile) is a leg, the others are arms
@@ -62,21 +64,38 @@ impl Body {
     pub fn free_back(&self) -> Vec<usize> {
         self.free(&self.back)
     }
-    /// Arms that move in the attack: the free side chains; on a body with
-    /// none and five legs or more, the front-most pair of legs (it stands
-    /// on the others).
+    /// What strikes in the attack: the free side chains; on a body with
+    /// none and four legs or more, the pair of legs that leaves the body
+    /// highest and farthest forward (a knuckle-walker's arms, a spider's
+    /// front pair), lifted off the ground; it stands on the others.
     pub fn strikers(&self, c: &Creature) -> Vec<Vec<usize>> {
-        if !self.arms.is_empty() || self.legs.len() < 5 {
+        if !self.arms.is_empty() || self.legs.len() < 4 {
             return self.arms.clone();
         }
+        let up = Vec3::new(0.0, 0.0, 1.0);
+        let at = |leg: &Vec<usize>| {
+            let b = &c.skeleton.bones[leg[0]];
+            let p = b.parent.map_or(b.head, |p| c.skeleton.bones[p].head);
+            p.dot(up) + p.dot(c.forward)
+        };
         let mut legs = self.legs.clone();
-        legs.sort_by(|a, b| {
-            let fa = c.skeleton.bones[a[0]].head.dot(c.forward);
-            let fb = c.skeleton.bones[b[0]].head.dot(c.forward);
-            fb.total_cmp(&fa).then(a[0].cmp(&b[0]))
-        });
+        legs.sort_by(|a, b| at(b).total_cmp(&at(a)).then(a[0].cmp(&b[0])));
         legs.truncate(2);
         legs
+    }
+
+    /// `held` with the feet of `lifted` chains taken off the ground.
+    pub fn held_without(&self, c: &Creature, lifted: &[Vec<usize>]) -> Vec<bool> {
+        let off_ground: Vec<usize> = lifted.iter().flat_map(|l| subtree(c, l[0])).collect();
+        let mut held = vec![false; c.skeleton.len()];
+        for &f in c.feet.iter().filter(|f| !off_ground.contains(f)) {
+            let mut cur = Some(f);
+            while let Some(b) = cur {
+                held[b] = true;
+                cur = c.skeleton.bones[b].parent;
+            }
+        }
+        held
     }
 }
 
@@ -108,13 +127,55 @@ pub fn read(c: &Creature) -> Body {
     let mid = (sides.iter().cloned().fold(f64::INFINITY, f64::min)
         + sides.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
         * 0.5;
-    let near = 0.025 * size;
-    let centre: Vec<bool> = c
-        .skeleton
-        .bones
-        .iter()
-        .map(|b| (b.head.dot(left) - mid).abs() <= near && (b.tail.dot(left) - mid).abs() <= near)
-        .collect();
+    // Off the mirror plane, by its head. The centre line is followed by
+    // structure, not by a band: at each bone the child nearest the plane
+    // goes on (a generated body's spine wanders a few percent sideways;
+    // its limbs leave it in pairs, well out).
+    let side = |b: usize| c.skeleton.bones[b].head.dot(left) - mid;
+    let off = |b: usize| side(b).abs();
+    // A child that has a partner on the other side, about as far out, is
+    // one of a pair (legs, arms, eyes): never the centre line.
+    let paired = |k: usize, among: &[usize]| {
+        off(k) > 0.03 * size
+            && among.iter().any(|&o| {
+                o != k && side(o) * side(k) < 0.0 && (off(o) - off(k)).abs() <= 0.03 * size
+            })
+    };
+    let band = 0.10 * size;
+    let reach = |b: usize, dir: Vec3| -> f64 {
+        subtree(c, b)
+            .iter()
+            .map(|&x| c.skeleton.bones[x].tail.dot(dir))
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    let centre_chain = |start: usize, dir: Vec3, skip: &[usize]| -> Vec<usize> {
+        let mut out = vec![start];
+        let mut cur = start;
+        loop {
+            let all = children(c, cur);
+            // an only child goes on however far it leans (a head held to one side)
+            let kids: Vec<usize> = all
+                .iter()
+                .copied()
+                .filter(|k| {
+                    !skip.contains(k) && (all.len() == 1 || (off(*k) <= band && !paired(*k, &all)))
+                })
+                .collect();
+            if kids.is_empty() {
+                break;
+            }
+            let least = kids.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
+            let next = kids
+                .iter()
+                .copied()
+                .filter(|&k| off(k) <= least + 0.03 * size)
+                .max_by(|a, b| reach(*a, dir).total_cmp(&reach(*b, dir)).then(b.cmp(a)))
+                .unwrap();
+            out.push(next);
+            cur = next;
+        }
+        out
+    };
     let mut held = vec![false; n];
     for &f in &c.feet {
         let mut cur = Some(f);
@@ -123,13 +184,6 @@ pub fn read(c: &Creature) -> Body {
             cur = c.skeleton.bones[b].parent;
         }
     }
-    // A centre chain from `start` toward `dir`, centre bones only.
-    let centre_chain = |start: usize, dir: Vec3, skip: &[usize]| -> Vec<usize> {
-        let not_centre: Vec<usize> = (0..n)
-            .filter(|&b| !centre[b] || skip.contains(&b))
-            .collect();
-        chain_toward(c, start, dir, &not_centre)
-    };
     let root = c.root();
     let front_dir = (c.forward + up).normalized();
     let front = centre_chain(root, front_dir, &[]);
@@ -140,8 +194,14 @@ pub fn read(c: &Creature) -> Body {
     let mut best = f64::NEG_INFINITY;
     for &from in front.iter().take(((front.len() + 2) / 3).max(1)) {
         let base = c.skeleton.bones[from].head.dot(back_dir);
-        for k in children(c, from) {
-            if !centre[k] || front.contains(&k) {
+        let all = children(c, from);
+        let least = all.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
+        for k in all.iter().copied() {
+            if front.contains(&k)
+                || off(k) > band
+                || off(k) > least + 0.03 * size
+                || paired(k, &all)
+            {
                 continue;
             }
             let ch = centre_chain(k, back_dir, &front);
@@ -158,7 +218,7 @@ pub fn read(c: &Creature) -> Body {
     let mut arms = Vec::new();
     for &b in &on_line {
         for k in children(c, b) {
-            if centre[k] || on_line.contains(&k) {
+            if on_line.contains(&k) {
                 continue;
             }
             let out = (c.skeleton.bones[k].tail - c.skeleton.bones[b].head).normalized();
@@ -266,9 +326,11 @@ pub fn idle(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
 pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
     let up = Vec3::new(0.0, 0.0, 1.0);
     let down = up.scale(-1.0);
-    let front = body.free_front();
-    let back = body.free_back();
     let strikers = body.strikers(c);
+    // a striking leg leaves the ground, and what only it held is free
+    let held = body.held_without(c, &strikers);
+    let front: Vec<usize> = body.front.iter().copied().filter(|&b| !held[b]).collect();
+    let back: Vec<usize> = body.back.iter().copied().filter(|&b| !held[b]).collect();
     let mut out = Vec::with_capacity(frames);
     for f in 0..frames {
         let t = if frames > 1 {
@@ -441,6 +503,103 @@ mod tests {
             .map(|p| turn_deg(p.quat))
             .fold(0.0, f64::max);
         assert!(most > 30.0, "largest turn {}", most);
+    }
+
+    /// A made-up knuckle-walker: a spine that wanders 2-4% sideways, long
+    /// arms whose hands stand on the ground, short legs, a head held to one
+    /// side.
+    fn knuckle_walker() -> Creature {
+        use crate::clip::{Bone, Skeleton};
+        let b = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
+            name: name.into(),
+            parent,
+            head: Vec3::new(h[0], h[1], h[2]),
+            tail: Vec3::new(t[0], t[1], t[2]),
+        };
+        let bones = vec![
+            b("hips", None, [-0.03, 0.10, 0.30], [-0.02, 0.09, 0.33]),
+            b("spine1", Some(0), [-0.02, 0.09, 0.42], [0.0, 0.07, 0.53]),
+            b("spine2", Some(1), [0.0, 0.07, 0.53], [0.03, 0.05, 0.64]),
+            b("chest", Some(2), [0.03, 0.05, 0.64], [0.01, 0.0, 0.74]),
+            b("arm1.L", Some(3), [0.18, -0.02, 0.62], [0.29, -0.03, 0.47]),
+            b("arm2.L", Some(4), [0.29, -0.03, 0.47], [0.30, -0.15, 0.20]),
+            b("hand.L", Some(5), [0.30, -0.15, 0.20], [0.28, -0.25, 0.0]),
+            b(
+                "arm1.R",
+                Some(3),
+                [-0.14, -0.04, 0.66],
+                [-0.25, -0.04, 0.50],
+            ),
+            b(
+                "arm2.R",
+                Some(7),
+                [-0.25, -0.04, 0.50],
+                [-0.30, -0.15, 0.20],
+            ),
+            b("hand.R", Some(8), [-0.30, -0.15, 0.20], [-0.30, -0.25, 0.0]),
+            b("neck", Some(3), [0.01, -0.06, 0.80], [0.09, -0.10, 0.92]),
+            b("head", Some(10), [0.09, -0.10, 0.92], [0.15, -0.12, 0.96]),
+            b("leg1.L", Some(0), [0.08, 0.12, 0.27], [0.15, 0.13, 0.15]),
+            b("leg2.L", Some(12), [0.15, 0.13, 0.15], [0.15, 0.10, 0.0]),
+            b("leg1.R", Some(0), [-0.12, 0.05, 0.28], [-0.16, 0.0, 0.15]),
+            b("leg2.R", Some(14), [-0.16, 0.0, 0.15], [-0.17, -0.05, 0.0]),
+        ];
+        let skeleton = Skeleton { bones };
+        let (lo, hi) = skeleton_bounds(&skeleton);
+        crate::creature::profile::build(
+            "knuckles",
+            skeleton,
+            vec![6, 9, 13, 15],
+            Vec3::new(0.0, -1.0, 0.0),
+            lo,
+            hi,
+            64,
+        )
+    }
+
+    #[test]
+    fn a_wandering_spine_is_still_the_spine_and_knuckles_strike() {
+        let c = knuckle_walker();
+        let b = read(&c);
+        let name = |i: usize| c.skeleton.bones[i].name.as_str();
+        let front: Vec<&str> = b.front.iter().map(|&i| name(i)).collect();
+        assert_eq!(
+            front,
+            ["hips", "spine1", "spine2", "chest", "neck", "head"],
+            "{:?}",
+            b
+        );
+        assert_eq!(b.legs.len(), 4, "{:?}", b);
+        assert!(b.arms.is_empty());
+        // the hands are feet, so the chest is held for standing ...
+        assert!(b.held[3]);
+        // ... the arms strike, and with them off the ground the chest is free
+        let s = b.strikers(&c);
+        let tops: Vec<&str> = s.iter().map(|l| name(l[0])).collect();
+        assert_eq!(tops.len(), 2);
+        assert!(
+            tops.contains(&"arm1.L") && tops.contains(&"arm1.R"),
+            "{:?}",
+            tops
+        );
+        let held = b.held_without(&c, &s);
+        assert!(!held[3] && !held[1] && held[0]);
+        let clip = attack(&c, &b, 24, 24.0);
+        let most = clip
+            .frames
+            .iter()
+            .flat_map(|fr| fr.poses.iter())
+            .map(|p| turn_deg(p.quat))
+            .fold(0.0, f64::max);
+        assert!(most > 30.0, "largest turn {}", most);
+        // the legs it stands on stay put through the attack
+        let still = fk(&c.skeleton, &rest(c.skeleton.len()));
+        for frame in &clip.frames {
+            let posed = fk(&c.skeleton, frame);
+            for foot in [13, 15] {
+                assert!((posed[foot].head - still[foot].head).length() < 1e-9);
+            }
+        }
     }
 
     #[test]
