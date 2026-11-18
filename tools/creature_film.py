@@ -7,8 +7,9 @@
 The camera is the game's (HLH `bevy/src/fx.rs`, `gameplay.rs`): 75 degrees
 of vertical view, pitched 0.32 rad (18.3 degrees) down, 3.0 m behind the
 player and looking at a point 1.535 m above the player's feet. The player
-is not drawn; the creature stands in front of them, facing them, its
-nearest point 1.5 m away, at the size its file gives. The frame is a 4K
+is not drawn; the creature stands in front of them, its nearest point
+1.5 m away, at the size its file gives, coming at them turned 40 degrees
+(`--turn`) so its legs and flanks show (head-on, a body hides its own legs). The frame is a 4K
 screen (3840 x 2160) cut to the creature (`--crop`, as shares of the
 frame, so two films can share one cut): the game's own view, with the
 pixels a large screen gives it.
@@ -40,7 +41,7 @@ WIDTH, HEIGHT = 3840, 2160
 
 def options():
     argv = sys.argv[sys.argv.index("--") + 1:]
-    o = {"frames": "8", "loops": "1", "move": "auto", "fps": "24"}
+    o = {"frames": "8", "loops": "1", "move": "auto", "fps": "24", "turn": "40"}
     k = 0
     while k < len(argv):
         key = argv[k][2:]
@@ -86,7 +87,7 @@ def set_time(scene, f):
     scene.frame_set(fi, subframe=max(0.0, min(0.9999, f - fi)))
 
 
-def foot_speed(scene, arm, f0, f1, ground, height):
+def foot_speed(scene, arm, f0, f1, ground, height, back):
     """How fast planted feet go back in an in-place clip (m/s): bones whose
     tails touch the ground, followed from one frame to the next."""
     fps = scene.render.fps
@@ -99,7 +100,7 @@ def foot_speed(scene, arm, f0, f1, ground, height):
             for n, p in tails.items():
                 q = prev.get(n)
                 if q is not None and p.z <= ground + 0.03 * height and q.z <= ground + 0.03 * height:
-                    speeds.append((p.y - q.y) * fps)
+                    speeds.append((p - q).dot(back) * fps)
         prev = tails
         f += 1.0
     if not speeds:
@@ -133,6 +134,8 @@ def main():
     for r in roots:
         r.parent = carrier
 
+    turn = math.radians(float(o["turn"]))
+    carrier.rotation_euler = (0.0, 0.0, turn)
     set_time(scene, f0)
     rest = mesh_points(objs)
     lo = Vector((min(p.x for p in rest), min(p.y for p in rest), min(p.z for p in rest)))
@@ -149,13 +152,16 @@ def main():
     times = [f0 + span * i / n for i in range(n)]
     speed = 0.0
     moving = o["move"] == "auto" and any(w in act.name.lower() for w in ("walk", "trot", "run", "gallop"))
+    # its facing: glTF +Z (Blender -Y) turned with the carrier
+    ahead = Vector((math.sin(turn), -math.cos(turn), 0.0))
     if moving and arms:
-        speed = foot_speed(scene, arms[0], f0, f1, ground, height)
-    start_y = carrier.location.y + (speed * span / fps if moving else 0.0)
+        speed = foot_speed(scene, arms[0], f0, f1, ground, height, -ahead)
+    stand = carrier.location.copy()
+    start = stand - ahead * (speed * span / fps if moving else 0.0)
 
     def place(f):
         t = (f - f0) / fps
-        carrier.location.y = start_y - speed * t
+        carrier.location = start + ahead * (speed * t)
         clip_f = f0 + ((f - f0) % max(f1 - f0, 1e-6)) if f > f1 else f
         set_time(scene, clip_f)
 
