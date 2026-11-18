@@ -592,9 +592,17 @@ pub const GRIP_HANDLE_BAD_M: f64 = 0.115;
 /// a hand the clip never closes turns 0.
 pub const GRIP_CURL_FULL_DEG: f64 = 35.0;
 /// Mean finger turn of a closed distal-tip mitten chain (`palm_len > 2 *
-/// finger_len`), where wrapping past ~25 deg per joint crushes the short
-/// fused tip into itself.
-pub const GRIP_MITTEN_CURL_FULL_DEG: f64 = 20.0;
+/// finger_len`). The measure's own value, kept apart from the solver's
+/// `attack::grip::DISTAL_MITTEN_CURL`: it is the full-curl value the
+/// blind-judged measure had before 2026-11-16 (35 deg, as for any hand).
+/// Change it only after a blind same-frame judge backs the change.
+pub const GRIP_MITTEN_CURL_FULL_DEG: f64 = 35.0;
+/// Where the measure puts a distal mitten's palm, as a share of hand
+/// head -> finger root. The measure's own value, kept apart from the
+/// solver's `attack::grip::DISTAL_MITTEN_PALM_SHARE`: 1.0 is the finger
+/// root, the anchor the blind-judged measure had before 2026-11-16.
+/// Change it only after a blind same-frame judge backs the change.
+pub const GRIP_MITTEN_PALM_SHARE: f64 = 1.0;
 
 /// The grip's score from the handle's distance to the palm and the
 /// fingers' bend (`None` when the rig has no measurable fingers: the
@@ -909,12 +917,19 @@ impl Stage {
         // the socket are not fingers.
         let mut palm_roots: Vec<(usize, f64)> = Vec::new();
         let mut finger_chains: Vec<Vec<usize>> = Vec::new();
+        // Per palm root: is it a distal mitten (hand bone over twice the
+        // finger chain)? Kept apart from the share so the measure's
+        // mitten curl follows the rig's shape, not the anchor's value.
+        let mut mitten_roots: Vec<bool> = Vec::new();
         if let Some(h) = hand {
-            let root_share = |c0: usize, c_last: usize| -> f64 {
+            let is_mitten = |c0: usize, c_last: usize| -> bool {
                 let palm_len = (subject.rig.head(c0) - subject.rig.head(h)).length();
                 let finger_len = (subject.rig.head(c_last) - subject.rig.head(c0)).length();
-                if finger_len > 1e-9 && palm_len > 2.0 * finger_len {
-                    crate::attack::grip::DISTAL_MITTEN_PALM_SHARE
+                finger_len > 1e-9 && palm_len > 2.0 * finger_len
+            };
+            let root_share = |m: bool| -> f64 {
+                if m {
+                    GRIP_MITTEN_PALM_SHARE
                 } else {
                     1.0
                 }
@@ -928,13 +943,15 @@ impl Stage {
                     })
                     .collect();
                 if chain.len() >= 2 {
-                    let sh = root_share(chain[0], *chain.last().unwrap());
-                    palm_roots.push((chain[0], sh));
+                    let m = is_mitten(chain[0], *chain.last().unwrap());
+                    palm_roots.push((chain[0], root_share(m)));
+                    mitten_roots.push(m);
                     let mut full = vec![h];
                     full.extend(chain);
                     finger_chains.push(full);
                 } else if let Some(&root) = chain.first() {
                     palm_roots.push((root, 1.0));
+                    mitten_roots.push(false);
                 }
             }
             if finger_chains.is_empty() {
@@ -963,14 +980,15 @@ impl Stage {
                         }
                     }
                     if chain.len() >= 3 {
-                        let sh = root_share(c, *chain.last().unwrap());
-                        palm_roots.push((c, sh));
+                        let m = is_mitten(c, *chain.last().unwrap());
+                        palm_roots.push((c, root_share(m)));
+                        mitten_roots.push(m);
                         finger_chains.push(chain);
                     }
                 }
             }
         }
-        let distal_mitten = !palm_roots.is_empty() && palm_roots.iter().all(|(_, sh)| *sh < 1.0);
+        let distal_mitten = !mitten_roots.is_empty() && mitten_roots.iter().all(|&m| m);
         Ok(Stage {
             cam: Camera::game(subject.forward(), opts, unit),
             unit,
