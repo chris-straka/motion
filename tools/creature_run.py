@@ -317,8 +317,14 @@ def gate_judge(name, glb, work, blender):
     if r["exit"] != 0:
         raise RuntimeError("creature-clips --clips sweep: " + tail(r["err"] or r["out"], 300))
     limbs = sum(1 for ln in r["out"].splitlines() if ln.startswith(("leg:", "arm:")))
-    planted = os.path.join(work, f"{name}_planted_swap.glb")
-    cg.plant("swap", sweep, planted)
+    # the planted rig is skintokens' own (`creature-bench plant`: each limb's skin on the farthest
+    # joint of the opposite side). A plain mirror swap was tried first and could not be told
+    # from the clean rig at the game camera on a body that is its own mirror image.
+    cb = os.environ.get("CREATURE_BENCH_BIN") or shutil.which("creature-bench")
+    planted = os.path.join(work, f"{name}_planted.glb")
+    r = sh([cb, "plant", sweep, planted])
+    if r["exit"] != 0 or not os.path.exists(planted):
+        raise RuntimeError("creature-bench plant: " + tail(r["err"] or r["out"], 300))
     pclip, pn = "sweep", 4 * max(1, limbs)
     m1 = film(blender, sweep, pclip, os.path.join(frames, "m1"), measure=True, frames=pn)
     m2 = film(blender, planted, pclip, os.path.join(frames, "m2"), measure=True, frames=pn)
