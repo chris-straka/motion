@@ -261,7 +261,9 @@ kind each item is and what the clip is. Read questions.json, then open every pic
 For every item, list the defects you see. Name only these:
 - "torn_mesh": skin torn, ripped open, or stretched into spikes, strings or long thin sheets;
 - "limb_through_body": a leg, arm, wing, tail or head passing through the body or through another limb;
-- "sliding_foot": a foot that should be standing on the ground sliding along it.
+- "sliding_foot": a foot that should be standing on the ground sliding along it;
+- "limb_not_following": a limb that swings from the wrong place, comes loose from where it joins
+  the body, or does not move with the motion the clip describes while some other part does.
 For a single strip also say whether the creature visibly attacks (strikes, lunges, bites, swipes) in it.
 For a two-strip item say which half moves more cleanly: "left", "right", or "cant_tell" when they look
 the same to you; and list each half's defects.
@@ -317,14 +319,11 @@ def gate_judge(name, glb, work, blender):
     if r["exit"] != 0:
         raise RuntimeError("creature-clips --clips sweep: " + tail(r["err"] or r["out"], 300))
     limbs = sum(1 for ln in r["out"].splitlines() if ln.startswith(("leg:", "arm:")))
-    # the planted rig is skintokens' own (`creature-bench plant`: each limb's skin on the farthest
-    # joint of the opposite side). A plain mirror swap was tried first and could not be told
-    # from the clean rig at the game camera on a body that is its own mirror image.
-    cb = os.environ.get("CREATURE_BENCH_BIN") or shutil.which("creature-bench")
-    planted = os.path.join(work, f"{name}_planted.glb")
-    r = sh([cb, "plant", sweep, planted])
-    if r["exit"] != 0 or not os.path.exists(planted):
-        raise RuntimeError("creature-bench plant: " + tail(r["err"] or r["out"], 300))
+    # the planted rig: each limb's skin on its mirror partner's bones (`creature_gates.py plant
+    # swap`). It is shown, like the clean sweep, as a strip of its own among the others, and is
+    # caught when the judge names a fault on it that it does not name on the clean sweep.
+    planted = os.path.join(work, f"{name}_planted_swap.glb")
+    cg.plant("swap", sweep, planted)
     pclip, pn = "sweep", 4 * max(1, limbs)
     m1 = film(blender, sweep, pclip, os.path.join(frames, "m1"), measure=True, frames=pn)
     m2 = film(blender, planted, pclip, os.path.join(frames, "m2"), measure=True, frames=pn)
@@ -332,14 +331,12 @@ def gate_judge(name, glb, work, blender):
             min(m1["crop"][2], m2["crop"][2]), max(m1["crop"][3], m2["crop"][3])]
     a = film(blender, sweep, pclip, os.path.join(frames, "pc"), crop=crop, frames=pn)
     b = film(blender, planted, pclip, os.path.join(frames, "pp"), crop=crop, frames=pn)
-    sa, sb = os.path.join(work, "planted_clean.png"), os.path.join(work, "planted_swap.png")
+    sa, sb = os.path.join(work, "sweep_clean.png"), os.path.join(work, "sweep_planted.png")
     tile(a["pngs"], sa)
     tile(b["pngs"], sb)
+    items.append({"category": "sweep_clean", "clip": pclip, "image": sa})
+    items.append({"category": "planted", "clip": pclip, "image": sb})
     rnd = random.Random(JUDGE_SEED)
-    clean_left = rnd.random() < 0.5
-    pair = os.path.join(work, "planted_pair.png")
-    side_by_side(sa if clean_left else sb, sb if clean_left else sa, pair)
-    items.append({"category": "planted", "clip": pclip, "image": pair, "expected": "left" if clean_left else "right"})
     rnd.shuffle(items)
     questions = {}
     for i, it in enumerate(items, 1):
@@ -348,7 +345,7 @@ def gate_judge(name, glb, work, blender):
         what = "attack" if it["category"] == "film" and it.get("attack_clip") else it["clip"]
         clip_words = {"attack": "an attack", "sweep": "a test clip: each limb in turn swings forward, folds and comes back"}
         questions[str(i)] = {"image": f"item_{i:02d}.png",
-                             "kind": "single" if it["category"] == "film" else "pair",
+                             "kind": "pair" if it["category"] == "control" else "single",
                              "clip": clip_words.get(what, f"the '{it['clip']}' clip")}
     json.dump({"items": questions}, open(os.path.join(pack, "questions.json"), "w"), indent=1)
     json.dump({"seed": JUDGE_SEED, "items": items}, open(keyp, "w"), indent=1)
@@ -383,17 +380,25 @@ def gate_judge(name, glb, work, blender):
     json.dump(ans, open(os.path.join(work, "answers.json"), "w"), indent=1)
     verdicts = []
     ok = not outside and jr["exit"] == 0
+    kinds = ("torn_mesh", "limb_through_body", "sliding_foot", "limb_not_following")
+    clean_sweep = next((ans.get(str(i["item"]), {}) for i in items if i["category"] == "sweep_clean"), {})
+    clean_faults = set(d for d in clean_sweep.get("defects", []) if d in kinds)
     for it in items:
         a = ans.get(str(it["item"]), {})
         if it["category"] == "control":
             good = a.get("cleaner") == "cant_tell"
             verdicts.append({"item": it["item"], "category": "control", "answer": a.get("cleaner"), "pass": good})
         elif it["category"] == "planted":
-            good = a.get("cleaner") == it["expected"]
-            verdicts.append({"item": it["item"], "category": "planted", "answer": a.get("cleaner"),
-                             "expected": it["expected"], "pass": good})
+            named = set(d for d in a.get("defects", []) if d in kinds)
+            good = bool(named - clean_faults)
+            verdicts.append({"item": it["item"], "category": "planted", "defects": sorted(named),
+                             "clean_sweep_defects": sorted(clean_faults), "pass": good})
+        elif it["category"] == "sweep_clean":
+            verdicts.append({"item": it["item"], "category": "sweep_clean", "defects": sorted(clean_faults),
+                             "pass": True, "note": "counted only against the planted strip"})
+            continue
         else:
-            defects = [d for d in a.get("defects", []) if d in ("torn_mesh", "limb_through_body", "sliding_foot")]
+            defects = [d for d in a.get("defects", []) if d in kinds]
             good = not defects and (not it.get("attack_clip") or a.get("attacks") == "yes")
             verdicts.append({"item": it["item"], "category": "film", "clip": it["clip"], "defects": defects,
                              "attacks": a.get("attacks"), "pass": good})

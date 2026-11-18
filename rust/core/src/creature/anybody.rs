@@ -325,7 +325,6 @@ pub fn idle(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
 /// forward as a whole.
 pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
     let up = Vec3::new(0.0, 0.0, 1.0);
-    let down = up.scale(-1.0);
     let left = left_of(c);
     let strikers = body.strikers(c);
     // a striking leg leaves the ground, and what only it held is free
@@ -355,34 +354,23 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
         }
         for arm in &strikers {
             let top = arm[0];
-            if dir_of(c, top).dot(left).abs() > 0.55 {
-                // a limb held out sideways (a wing, a fin) beats on its own
-                // side, up as the body rears and down through the strike;
-                // swung forward it would sweep across the body
+            // Every striking limb swings in its own side's upright plane
+            // (about the left-right axis), so it never crosses the body:
+            // drawn back as the body rears, then swung through.
+            p.pitch(top, -30.0 * rear + 60.0 * strike);
+            if let Some(&elbow) = arm.get(1) {
+                p.pitch(elbow, 25.0 * rear - 10.0 * strike);
+            }
+            // A limb held out sideways (a wing, a fin) also beats: up as the
+            // body rears, down through the strike.
+            let tip = c.skeleton.bones[*arm.last().unwrap()].tail;
+            let reach = (tip - c.skeleton.bones[top].head).normalized();
+            if reach.dot(left).abs() > 0.55 {
                 p.add(
                     top,
                     axis_toward(c, top, up, c.forward),
-                    35.0 * rear - 50.0 * strike,
+                    30.0 * rear - 40.0 * strike,
                 );
-                if let Some(&elbow) = arm.get(1) {
-                    p.add(elbow, axis_toward(c, elbow, down, c.forward), 20.0 * rear);
-                }
-            } else {
-                // a hanging arm: raised up and out in front, then swung down
-                // through the strike
-                p.add(top, axis_toward(c, top, up, c.forward), 40.0 * rear);
-                p.add(
-                    top,
-                    axis_toward(c, top, c.forward, down),
-                    15.0 * rear + 55.0 * strike,
-                );
-                if let Some(&elbow) = arm.get(1) {
-                    p.add(
-                        elbow,
-                        axis_toward(c, elbow, up, c.forward),
-                        25.0 * rear - 10.0 * strike,
-                    );
-                }
             }
         }
         if body.floats {
