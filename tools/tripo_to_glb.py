@@ -193,6 +193,36 @@ def mend_holes(obj, limit):
     return out
 
 
+def untangle(obj):
+    """A generator's tangles: edges three or more faces share. The faces
+    round them are taken out (and what that leaves loose), so each tangle
+    becomes a plain hole the fill or the cap can close; a slit that ran into
+    one otherwise stays open at both ends. Returns the counts."""
+    import bmesh
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    size = max(obj.dimensions) or 1.0
+    merged = len(bm.verts)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-6 * size)
+    merged -= len(bm.verts)
+    bad = [e for e in bm.edges if len(e.link_faces) > 2]
+    faces = list({f for e in bad for f in e.link_faces})
+    if faces:
+        bmesh.ops.delete(bm, geom=faces, context="FACES_ONLY")
+        loose_e = [e for e in bm.edges if not e.link_faces]
+        if loose_e:
+            bmesh.ops.delete(bm, geom=loose_e, context="EDGES")
+        loose_v = [v for v in bm.verts if not v.link_edges]
+        if loose_v:
+            bmesh.ops.delete(bm, geom=loose_v, context="VERTS")
+    out = {"merged_verts": merged, "tangled_edges": len(bad), "faces_taken_out": len(faces),
+           "still_tangled": sum(1 for e in bm.edges if len(e.link_faces) > 2)}
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+    return out
+
+
 def cap_rims(obj, limit):
     """Rims the hole fill could not close (one that touches itself or
     another, or runs along an edge three faces share: a generator's
@@ -233,6 +263,8 @@ def cap_rims(obj, limit):
                     else:
                         c[uv].uv = sum((at[v] for v in (a_, b_)), at[a_] * 0) / 2
         capped += 1
+    bm.verts.index_update()
+    bm.edges.index_update()
     left = boundary_loops(bm)
     bm.to_mesh(obj.data)
     bm.free()
@@ -247,6 +279,8 @@ def tris(obj):
 def main():
     o = options()
     obj = load(o["in"])
+    # a monster's skin is closed (`--holes 1.0`): tangles are taken apart first
+    tangles = untangle(obj) if o["holes"] >= 1.0 else None
     holes = mend_holes(obj, o["holes"])
     source_tris = tris(obj)
     m = facing.measure([tuple(v.co) for v in obj.data.vertices], kind=o["kind"])
@@ -259,9 +293,10 @@ def main():
         mod.use_collapse_triangulate = True
         bpy.ops.object.modifier_apply(modifier=mod.name)
         # The cut can open new rims and leave old tangles: mend again, by the same rule.
+        tangles_after_cut = untangle(obj) if o["holes"] >= 1.0 else None
         holes_after_cut = mend_holes(obj, o["holes"])
     else:
-        holes_after_cut = None
+        holes_after_cut = tangles_after_cut = None
     # What the fill left (tangled rims) is capped, by the same limit.
     capped = cap_rims(obj, o["holes"])
     vs = obj.data.vertices
@@ -293,6 +328,8 @@ def main():
         "textures": textures,
         "holes": holes,
         "holes_after_cut": holes_after_cut,
+        "tangles": tangles,
+        "tangles_after_cut": tangles_after_cut,
         "capped": capped,
     }
     bpy.ops.export_scene.gltf(filepath=o["out"], export_format="GLB", use_selection=False,
