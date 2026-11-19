@@ -358,20 +358,32 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
             // the tail goes against the body: down as it rears, up as it strikes
             p.pitch_chain(&back, -8.0 * rear + 14.0 * strike);
         }
-        for arm in &strikers {
+        // The second striker of a pair follows a beat later (its strike
+        // starts at 0.45, not 0.35) at 40% of the swing: one claw leads, as
+        // a swipe does. A mirror-image strike also hid a left-right swap
+        // from the blind judge (a held-out creature, 2026-11-18). Wings
+        // still beat together.
+        let strike_late = smooth((t - 0.45) / 0.15) * (1.0 - smooth((t - 0.65) / 0.35));
+        for (k, arm) in strikers.iter().enumerate() {
             let top = arm[0];
+            let tip = c.skeleton.bones[*arm.last().unwrap()].tail;
+            let reach = (tip - c.skeleton.bones[top].head).normalized();
+            let sideways = reach.dot(left).abs() > 0.55;
+            let (gain, s) = if k == 0 || sideways {
+                (1.0, strike)
+            } else {
+                (0.4, strike_late)
+            };
             // Every striking limb swings in its own side's upright plane
             // (about the left-right axis), so it never crosses the body:
             // drawn back as the body rears, then swung through.
-            p.pitch(top, -30.0 * rear + 60.0 * strike);
+            p.pitch(top, gain * (-30.0 * rear + 60.0 * s));
             if let Some(&elbow) = arm.get(1) {
-                p.pitch(elbow, 25.0 * rear - 10.0 * strike);
+                p.pitch(elbow, gain * (25.0 * rear - 10.0 * s));
             }
             // A limb held out sideways (a wing, a fin) also beats: up as the
             // body rears, down through the strike.
-            let tip = c.skeleton.bones[*arm.last().unwrap()].tail;
-            let reach = (tip - c.skeleton.bones[top].head).normalized();
-            if reach.dot(left).abs() > 0.55 {
+            if sideways {
                 p.add(
                     top,
                     axis_toward(c, top, up, c.forward),
