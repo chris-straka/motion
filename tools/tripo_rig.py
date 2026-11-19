@@ -4,7 +4,7 @@
 
     python3 tools/tripo_rig.py MODEL.fbx OUT_DIR [--name NAME]
         [--kind auto|human|creature] [--class hero|npc|monster]
-        [--seeds 1,2,3] [--tris N] [--height M] [--convention +x|...|none]
+        [--seeds 1,2,3] [--tris N] [--height M] [--texture PIXELS] [--convention +x|...|none]
         [--clips LIBRARY.glb [--pick walk=walk,attack_1=attack]]
         [--no-fix] [--fix-args "..."] [--keep-tries]
         [--unfuse [--unfuse-args "..."]]
@@ -126,6 +126,8 @@ def main():
     ap.add_argument("--seeds", default="1,2,3")
     ap.add_argument("--tris", type=int, default=0)
     ap.add_argument("--height", type=float, default=0.0)
+    ap.add_argument("--texture", type=int, default=1024,
+                    help="largest texture side the clean mesh keeps (tripo_to_glb.py --texture); a hero's face wants 4096")
     ap.add_argument("--convention", default="auto",
                     help="the facing a weak measurement gives way to: auto = by file type (Tripo's FBX faces +x; "
                          "a glTF file faces +z by the spec, so none), or +x|-x|+y|-y|none")
@@ -178,7 +180,7 @@ def main():
     def clean(tris):
         cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(repo, "tools/tripo_to_glb.py"), "--",
                a.model, mesh, "--kind", kind_arg, "--convention", a.convention, "--tris", str(tris),
-               "--height", str(a.height)]
+               "--height", str(a.height), "--texture", str(a.texture)]
         if a.klass == "monster":
             # a monster's skin is closed: every rim is mended, not only the short ones
             cmd += ["--holes", "1.0"]
