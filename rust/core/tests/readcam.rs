@@ -470,15 +470,24 @@ fn distal_mitten_places_socket_in_palm_pocket_and_rejects_fingertip_socket() {
     let (times, frames) = sample(&subj.rig, anim, None);
     let dt = (times[times.len() - 1] - times[0]) / (times.len() - 1) as f64;
     let (rc, _) = stage.read(&subj.rig, &frames, dt, &frames[0]);
-    assert!(rc.grip.handle_m < 0.045, "{:?}", rc.grip);
+    assert!(rc.grip.skin_based, "{:?}", rc.grip);
+    assert!(
+        rc.grip.palm_surface_m < motion_core::readcam::SKIN_PALM_GOOD_M,
+        "palm pocket must sit against palm skin, got {:?}",
+        rc.grip
+    );
+    assert!(
+        rc.grip.skin_wrap > motion_core::readcam::SKIN_WRAP_BAD,
+        "palm pocket must engage hand skin wrap, got {:?}",
+        rc.grip
+    );
     assert!(
         rc.grip.curl_deg > 20.0 && rc.grip.curl_deg < 36.0,
         "distal mitten curl should be gentle, got {:?}",
         rc.grip
     );
-    assert!((rc.grip.score - 1.0).abs() < 1e-9, "{:?}", rc.grip);
 
-    // Floating the socket out at Finger1 (the distal fingertips) must fail the grip check.
+    // Floating the socket out at Finger1 (the distal fingertips) must fail the skin grip check.
     let mut tip_doc = palm_doc.clone();
     let (_, sr, ss) = node_trs(&tip_doc.array("nodes")[sock_r]);
     set_node_trs(
@@ -491,8 +500,11 @@ fn distal_mitten_places_socket_in_palm_pocket_and_rejects_fingertip_socket() {
     let tip_stage = Stage::new(&tip_doc, &tip_subj, &cam_opts).unwrap();
     let (tip_rc, _) = tip_stage.read(&tip_subj.rig, &frames, dt, &frames[0]);
     assert!(
-        tip_rc.grip.handle_m > 0.08 && tip_rc.grip.score < 0.5,
-        "fingertip socket must fail grip check: {:?}",
-        tip_rc.grip
+        tip_rc.grip.palm_surface_m > motion_core::readcam::SKIN_PALM_BAD_M
+            && tip_rc.grip.score < 0.30
+            && rc.grip.score > tip_rc.grip.score,
+        "fingertip socket must fail skin grip check (< 0.30) and score below palm pocket: tip={:?} palm={:?}",
+        tip_rc.grip,
+        rc.grip
     );
 }
