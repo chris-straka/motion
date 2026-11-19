@@ -16,7 +16,7 @@ In `rust/core/src/readcam.rs`:
 1. **Public constants** (metres at the game's 2 m stature, GLB units divided by `unit`):
    - `pub const SKIN_PALM_GOOD_M: f64 = 0.040;` — handle axis within 4.0 cm of nearest palm skin surface gets full distance score (`1.0`).
    - `pub const SKIN_PALM_BAD_M: f64 = 0.085;` — handle axis `>= 8.5 cm` from palm skin gets `0.0`.
-   - `pub const SKIN_WRAP_BAD: f64 = 0.30;` — circumference coverage `<= 30%` (flat palm on one side) gets `0.0`.
+   - `pub const SKIN_WRAP_BAD: f64 = 0.40;` — circumference coverage `<= 40%` (144°, a flat palm or box face on one side of the handle) gets `0.0`.
    - `pub const SKIN_WRAP_GOOD: f64 = 0.85;` — circumference coverage `>= 85%` (palm + curled fingers wrapping handle) gets `1.0`.
    - `pub const SKIN_WRAP_HALF_LEN_M: f64 = 0.055;` — axial half-band along the handle axis (`±5.5 cm`).
    - `pub const SKIN_WRAP_MIN_R_M: f64 = 0.004;` — minimum radial distance from handle axis.

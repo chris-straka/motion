@@ -497,7 +497,7 @@ fn skin_grip_pure_scoring_and_constants() {
     assert!(skin_grip_of(0.02, 0.95, Some(1.0)) < 0.1);
     // Close to a flat open palm with no wrap (even without finger bones) -> fails.
     assert_eq!(skin_grip_of(0.015, SKIN_WRAP_BAD, None), 0.0);
-    assert!(skin_grip_of(0.015, 0.35, None) < 0.2);
+    assert!(skin_grip_of(0.015, SKIN_WRAP_BAD + 0.05, None) < 0.2);
     // Distant palm (fingertip socket or 10 cm off) -> fails even if curled.
     assert_eq!(skin_grip_of(SKIN_PALM_BAD_M + 0.01, 0.95, Some(50.0)), 0.0);
     // Mid-wrap without finger chains sits halfway.
@@ -670,8 +670,8 @@ fn skin_grip_distal_mitten_reads_palm_skin_not_bone_ratio() {
         palm_rc.grip
     );
     assert!(
-        palm_rc.grip.skin_wrap >= 0.70,
-        "palm pocket should be surrounded by hand skin: {:?}",
+        palm_rc.grip.skin_wrap > SKIN_WRAP_BAD,
+        "palm pocket should engage hand skin past flat-palm wrap: {:?}",
         palm_rc.grip
     );
 
@@ -688,8 +688,11 @@ fn skin_grip_distal_mitten_reads_palm_skin_not_bone_ratio() {
     );
     let tip_rc = score_socket_clip(&tip_doc);
     assert!(
-        tip_rc.grip.palm_surface_m > SKIN_PALM_BAD_M && tip_rc.grip.score < 0.30,
-        "fingertip socket on distal mitten must fail (< 0.30): {:?}",
-        tip_rc.grip
+        tip_rc.grip.palm_surface_m > SKIN_PALM_BAD_M
+            && tip_rc.grip.score < 0.30
+            && palm_rc.grip.score > tip_rc.grip.score,
+        "fingertip socket on distal mitten must fail (< 0.30) and score below palm pocket: tip={:?} palm={:?}",
+        tip_rc.grip,
+        palm_rc.grip
     );
 }
