@@ -6,7 +6,8 @@
 # Its output and exit code come back as if it had run here. Every path it is given must be on
 # this machine's disk (the card job runs on the machine with the card, which is this one: run the
 # route's own job with --linux and without --gpu, or the card job waits for the card it holds).
-# It asks for one core and goes before waiting jobs (--priority 5): it is a short child of a job
+# It asks for one core and goes before waiting jobs (--priority 5, or CREATURE_CARD_PRIORITY): it is a
+# short child of a job
 # that is already running and holding its own cores.
 # CREATURE_CARD_LOG, when set, gets a line per card job: seconds waited, seconds run, command.
 set -uo pipefail
@@ -28,7 +29,7 @@ done
   printf 'echo $? > %q\n' "$d/code"
 } > "$d/run.sh"
 t0=$(date +%s)
-fleet run --gpu --cores 1 --priority 5 --alongside --repo Games/_blender/skintokens \
+fleet run --gpu --cores 1 --priority "${CREATURE_CARD_PRIORITY:-5}" --alongside --repo Games/_blender/skintokens \
   -t "creature route: $(basename "$real") $1 on the card" -w -- bash "$d/run.sh" > "$d/fleet.log" 2>&1
 t1=$(date +%s)
 cat "$d/out" 2>/dev/null
