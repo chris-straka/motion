@@ -73,6 +73,14 @@ fi
 for _b in MOTIONFORGE_BIN SKINTOKENS_BIN CREATURE_RIG_BIN CREATURE_BENCH_BIN WEIGHTS_BIN RFCHECK_BIN BLENDER; do
   [ -x "${!_b}" ] || _cr_fail "$_b missing (${!_b})"
 done
+# Inside a fleet job, the model runs go to the card as short card jobs of their own
+# (tools/card_job.sh), so the route's job never holds the card; CREATURE_CARD_JOBS=0 runs them here.
+if [ -n "${FLEET_JOB:-}" ] && [ -n "${CUDA_ROOT:-}" ] && [ "${CREATURE_CARD_JOBS:-1}" != 0 ]; then
+  _cr_real=$SKINTOKENS_BIN
+  export SKINTOKENS_BIN=$CREATURE_DEPS/skintokens-card
+  printf '#!/bin/bash\nexec %q %q "$@"\n' "$_cr_here/tools/card_job.sh" "$_cr_real" > "$SKINTOKENS_BIN"
+  chmod +x "$SKINTOKENS_BIN"
+fi
 export CREATURE_DEP_DIRS="motion=$_cr_here skintokens=$SK_DIR meshweights=$WF_DIR rfcheck=$RF_DIR charkit=$CK_DIR"
 CREATURE_DEP_SHAS=""
 for _p in $CREATURE_DEP_DIRS; do

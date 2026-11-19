@@ -447,6 +447,11 @@ def main():
     G["gates"]["1"] = gate_tests(cache, repos)
     save()
 
+    # how long the card is really used: one line per card job (tools/card_job.sh)
+    cardlog = os.path.join(out, "card_jobs.tsv")
+    if os.path.exists(cardlog):
+        os.remove(cardlog)
+    os.environ["CREATURE_CARD_LOG"] = cardlog
     r1 = route(name, model, os.path.join(out, "run1"))
     G["route"] = {k: v for k, v in r1.items() if k not in ("report", "check")}
     G["route"]["picked"] = picked(r1["report"])
@@ -490,6 +495,12 @@ def main():
         G["gates"]["8"] = {"pass": False, "why": "no rig to plant from"}
         G["gates"]["6"] = {"pass": False, "why": "no rig to film"}
         G["gates"]["9"] = {"pass": False, "why": "no rig to put in the game"}
+    try:
+        rows = [ln.split("\t") for ln in open(cardlog) if ln.strip()]
+        G["card"] = {"jobs": len(rows), "seconds_on_card": sum(int(r[1]) for r in rows),
+                     "seconds_waiting": sum(int(r[0]) for r in rows), "both_runs": True}
+    except (OSError, ValueError, IndexError):
+        G["card"] = {"jobs": 0, "note": "the model ran in this job (no card jobs logged)"}
     G["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     counted = {k: v for k, v in G["gates"].items() if v.get("pass") is not None}
     G["pass"] = len(counted) > 0 and all(v["pass"] for v in counted.values())

@@ -193,11 +193,17 @@ glTF spec.
 
 ## Running it
 
-    fleet run --snapshot --gpu --cores 8 -- tools/creature.sh NAME MODEL OUT
-    fleet run --snapshot --gpu --cores 8 -- tools/creature_set.sh dev|held_out MAP OUTROOT [id ...]
+    fleet run --snapshot --linux --cores 8 -- tools/creature.sh NAME MODEL OUT
+    fleet run --snapshot --linux --cores 8 -- tools/creature_set.sh dev|held_out MAP OUTROOT [id ...]
 
-- `--gpu` because the learned rig (`skintokens rig`, three seeds, run twice)
-  wants the NVIDIA card; nothing in the command names a machine. The
+- Not `--gpu`: fleet gives a card job the whole card for its whole length,
+  and the route uses the card only for its model runs (`skintokens rig`,
+  three seeds, and `skintokens skin` inside the weight fix, each run twice).
+  Inside a fleet job each of those goes to the card as a short card job of
+  its own (`tools/card_job.sh`: one core, ahead of the queue, output and
+  exit code brought back), and `gates.json`'s `card` says how long the card
+  was really used. `--linux` because the card jobs read the route's files
+  on the same disk. Nothing in the command names a machine. The
   machine's own settings (where its CUDA toolkit is) sit in
   `~/.config/creature-route/env.sh` on that machine, outside every repo.
 - `tools/creature_deps.sh` builds the tools at origin/main into
