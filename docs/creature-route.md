@@ -231,3 +231,25 @@ glTF spec.
 - The control pair of gate 6 is one strip shown twice: a judge that sees
   two identical halves should say it can't tell, and that is the answer
   the gate wants.
+
+## Where it stands (2026-11-19, after held-out run 4)
+
+Not done: 0 of 6 held-out monsters pass every gate. motion's own suite
+has two failing grip tests (the hand work's, left red); since the
+orchestrator's ruling they are reported once per run and judge no
+creature. Card use: 145 to 508 s per creature over 8 card jobs.
+
+| Held-out                   | Fails        | The one cause                                                                                                 | Smallest next experiment, on that monster alone                                                                                   |
+| -------------------------- | ------------ | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1, four-legged with a tail | nothing else |                                                                                                               |                                                                                                                                   |
+| 2, thin legs and spines    | gate 3       | no rig passes both: the learned rig has no neck chain and lopsided hind legs, the body-read rig fails anatomy | rig it with `--hint` from the learned rig's knees and elbows, and see if the body-read rig then passes anatomy                    |
+| 3, hunched biped           | gate 2       | three one-triangle holes the glTF exporter drops                                                              | run 5 (the file-level close in `tripo_to_glb.py`, 5de3cf0)                                                                        |
+| 4, gaunt biped             | gates 2, 6   | gate 2 as 3; gate 6: a thin stretched strand off the lead hand in the attack                                  | `weights show` on its attack frame to find the strand's vertices and the far bone they hold, then the fix candidate that drops it |
+| 5, hand on its fingers     | gate 3       | the anatomy check assumes a mirror plane a hand doesn't have                                                  | read its parts with the mirror plane off (`creature-rig parts`) and see whether five fingers and a palm come out                  |
+| 6, legless fish            | gate 6       | the attack tears since the lead-claw change (it passed in run 3)                                              | its attack with the lead-claw change off for fins, filmed and judged alone                                                        |
+
+Dev set (earlier code): 11 of 12 bench animals pass gates 2 to 5, 7 and 8
+(the spider has no head bone); 4 of retopo's 5 pass gates 2 to 9 (bench 4's
+hind legs read as only feet). The skintokens picker: out of sample its
+artist calibration falls under 90 on 2 of 6 unused animals (llama 70.6,
+snake 25.8); its agreement there is not measured yet.

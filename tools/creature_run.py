@@ -11,8 +11,10 @@ the game (snake case); there are no other flags. The run's own setting is
 go into the game repo, so gate 9 is not run for them, and the run says so.
 
 1. tests: each repo the route changed (motion, skintokens; charkit for
-   gate 9) has its README's checks green, cargo with zero warnings. Run
-   once per source tree (by git tree hash) and kept in the deps cache.
+   gate 9) runs its README's checks, cargo with zero warnings, once per
+   source tree (by git tree hash, kept in the deps cache). Reported once
+   at the top (`repo_tests`): a tool's own failing test decides no
+   creature's pass.
 2-5. `tools/creature_gates.py check` on OUT/NAME.glb.
 6. films at HLH's follow camera (`tools/creature_film.py`) and a fresh
    judge (`claude -p`, reading the pack folder only) that must call the
@@ -444,7 +446,16 @@ def main():
     save()
     cache = os.environ.get("CREATURE_DEPS") or os.path.join(os.path.expanduser("~"), ".cache", "creature-route")
     repos = {k: v for k, v in dep_dirs().items() if k in ("motion", "skintokens", "charkit")}
-    G["gates"]["1"] = gate_tests(cache, repos)
+    # The repos' own checks are reported once, at the top: a failing test of a tool's own suite
+    # is a fault of that suite, not a verdict on this creature (the orchestrator's ruling,
+    # 2026-11-19), so it decides no creature's pass. Nothing in the suites is skipped.
+    G["repo_tests"] = gate_tests(cache, repos)
+    reds = [f"{r}: {sum(len(s['failing']) for s in x['steps'] if s['exit'])} of its own tests fail"
+            + "".join(f" ({', '.join(t.split(' ... ')[0].replace('test ', '') for t in s['failing'] if t.startswith('test '))})"
+                      for s in x["steps"] if s["exit"] and s["failing"])
+            for r, x in G["repo_tests"]["repos"].items() if not x["pass"]]
+    G["repo_tests"]["summary"] = reds or ["every repo's checks green"]
+    print("repo checks: " + "; ".join(G["repo_tests"]["summary"]))
     save()
 
     # how long the card is really used: one line per card job (tools/card_job.sh)
