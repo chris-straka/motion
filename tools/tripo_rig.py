@@ -58,7 +58,17 @@ import time
 
 # Triangle budgets a little under rfcheck's per-class caps (seams split
 # vertices on export, and the cap is per mesh).
-TRIS = {"hero": 14000, "npc": 7500, "monster": 18000}
+# The clean step's triangle target per class: 93% of rfcheck's class
+# budget (`rfcheck --print-budget --class C`, the one place a budget is set;
+# 14,000 of the hero's 15,000 before 2026-11-19, when it became 25,000).
+CLEAN_SHARE = 0.93
+
+
+def class_tris(rfcheck, klass):
+    r = subprocess.run([rfcheck, "--print-budget", "--class", klass], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"rfcheck gave no {klass} budget: {r.stderr.strip()}")
+    return int(CLEAN_SHARE * json.loads(r.stdout)["max_tris_per_mesh"])
 
 
 def find(name, explicit, env, fallbacks, first=()):
@@ -192,10 +202,10 @@ def main():
             raise SystemExit(f"clean failed: {tail(r['err'] or r['out'])}")
         return json.loads(line[-1][len("TRIPO_TO_GLB "):]), r["secs"]
 
-    info, secs = clean(a.tris or (TRIS[a.klass] if a.klass else 0))
+    info, secs = clean(a.tris or (class_tris(rf, a.klass) if a.klass else 0))
     human = a.kind == "human" or (a.kind == "auto" and info["kind"] == "biped")
     klass = a.klass or ("npc" if human else "monster")
-    budget = a.tris or TRIS[klass]
+    budget = a.tris or class_tris(rf, klass)
     if info["tris"] > budget:
         info, secs = clean(budget)
     report["steps"]["clean"] = dict(info, ok=True, secs=secs)
