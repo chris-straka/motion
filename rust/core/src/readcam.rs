@@ -505,6 +505,31 @@ impl Mesh {
             })
             .collect()
     }
+
+    fn posed_subset(&self, world: &[Affine], vert_ids: &[usize]) -> Vec<Vec3> {
+        let skin: Vec<Affine> = world
+            .iter()
+            .zip(&self.rest_inv)
+            .map(|(w, r)| w.mul(r))
+            .collect();
+        vert_ids
+            .iter()
+            .map(|&vi| {
+                let v = &self.verts[vi];
+                let mut acc = Vec3::ZERO;
+                let mut total = 0.0;
+                for &(j, w) in &v.inf {
+                    acc = acc + skin[j].apply(v.p).scale(w);
+                    total += w;
+                }
+                if total > 0.0 {
+                    acc.scale(1.0 / total)
+                } else {
+                    v.p
+                }
+            })
+            .collect()
+    }
 }
 
 /// Readability of one clip at the game camera.
@@ -564,6 +589,16 @@ pub struct GripScore {
     pub fingers: bool,
     /// Frames judged (load to settle).
     pub frames: usize,
+    /// Minimum point-to-triangle distance from the handle's middle to the
+    /// weapon hand's palm skin triangles, median over the strike.
+    pub palm_surface_m: f64,
+    /// Fraction (`0.0..=1.0`) of angular sectors around the handle axis
+    /// covered by weapon-hand + finger skinned triangles, median over the
+    /// strike.
+    pub skin_wrap: f64,
+    /// `true` when the weapon hand has skinned mesh triangles (`score`
+    /// computed via [`skin_grip_of`]).
+    pub skin_based: bool,
 }
 
 impl Default for GripScore {
@@ -576,7 +611,42 @@ impl Default for GripScore {
             tip_m: 0.0,
             fingers: false,
             frames: 0,
+            palm_surface_m: 0.0,
+            skin_wrap: 0.0,
+            skin_based: false,
         }
+    }
+}
+
+/// Handle axis within this distance of nearest palm skin surface gets full
+/// distance score (metres at the game's 2 m stature).
+pub const SKIN_PALM_GOOD_M: f64 = 0.040;
+/// Handle axis at or past this distance from palm skin scores 0.
+pub const SKIN_PALM_BAD_M: f64 = 0.085;
+/// Circumference coverage at or below this share (flat palm) scores 0.
+pub const SKIN_WRAP_BAD: f64 = 0.40;
+/// Circumference coverage at or above this share (wrapped fist) scores 1.
+pub const SKIN_WRAP_GOOD: f64 = 0.85;
+/// Axial half-band along the handle axis for wrap sampling (metres).
+pub const SKIN_WRAP_HALF_LEN_M: f64 = 0.055;
+/// Minimum radial distance from handle axis for wrap sampling (metres).
+pub const SKIN_WRAP_MIN_R_M: f64 = 0.004;
+/// Maximum radial reach from handle axis for wrap sampling (metres).
+pub const SKIN_WRAP_MAX_R_M: f64 = 0.045;
+/// Number of equal angular sectors around the handle axis (15 deg each).
+pub const SKIN_WRAP_BINS: usize = 24;
+
+/// Skin-based grip score from palm-surface distance, circumference wrap, and
+/// finger curl (`None` when no measurable finger chains exist).
+pub fn skin_grip_of(palm_surface_m: f64, skin_wrap: f64, curl_deg: Option<f64>) -> f64 {
+    let palm_span = SKIN_PALM_BAD_M - SKIN_PALM_GOOD_M;
+    let palm_part = (1.0 - (palm_surface_m - SKIN_PALM_GOOD_M) / palm_span).clamp(0.0, 1.0);
+    let wrap_span = SKIN_WRAP_GOOD - SKIN_WRAP_BAD;
+    let wrap_part = ((skin_wrap - SKIN_WRAP_BAD) / wrap_span).clamp(0.0, 1.0);
+    let base = palm_part.min(wrap_part);
+    match curl_deg {
+        Some(c) => base.min((c / GRIP_CURL_FULL_DEG).clamp(0.0, 1.0)),
+        None => base,
     }
 }
 
@@ -688,13 +758,84 @@ fn median(v: &[f64]) -> f64 {
         return 0.0;
     }
     let mut s = v.to_vec();
-    s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    s.sort_by(f64::total_cmp);
     let m = s.len() / 2;
     if s.len() % 2 == 1 {
         s[m]
     } else {
         0.5 * (s[m - 1] + s[m])
     }
+}
+
+/// Exact squared distance from point `p` to triangle `(a, b, c)`, guarding
+/// degenerate triangles cleanly without NaN or division by zero.
+fn point_tri_dist_sq(p: Vec3, a: Vec3, b: Vec3, c: Vec3) -> f64 {
+    let ab = b - a;
+    let ac = c - a;
+    let ap = p - a;
+    let d1 = ab.dot(ap);
+    let d2 = ac.dot(ap);
+    if d1 <= 0.0 && d2 <= 0.0 {
+        return ap.length_sq();
+    }
+
+    let bp = p - b;
+    let d3 = ab.dot(bp);
+    let d4 = ac.dot(bp);
+    if d3 >= 0.0 && d4 <= d3 {
+        return bp.length_sq();
+    }
+
+    let vc = d1 * d4 - d3 * d2;
+    if vc <= 0.0 && d1 >= 0.0 && d3 <= 0.0 {
+        let denom = d1 - d3;
+        let v = if denom > 1e-18 { d1 / denom } else { 0.0 };
+        return (p - (a + ab.scale(v))).length_sq();
+    }
+
+    let cp = p - c;
+    let d5 = ab.dot(cp);
+    let d6 = ac.dot(cp);
+    if d6 >= 0.0 && d5 <= d6 {
+        return cp.length_sq();
+    }
+
+    let vb = d5 * d2 - d1 * d6;
+    if vb <= 0.0 && d2 >= 0.0 && d6 <= 0.0 {
+        let denom = d2 - d6;
+        let w = if denom > 1e-18 { d2 / denom } else { 0.0 };
+        return (p - (a + ac.scale(w))).length_sq();
+    }
+
+    let va = d3 * d6 - d5 * d4;
+    if va <= 0.0 && (d4 - d3) >= 0.0 && (d5 - d6) >= 0.0 {
+        let denom = (d4 - d3) + (d5 - d6);
+        let w = if denom > 1e-18 {
+            (d4 - d3) / denom
+        } else {
+            0.0
+        };
+        return (p - (b + (c - b).scale(w))).length_sq();
+    }
+
+    let sum = va + vb + vc;
+    if sum <= 1e-18 {
+        let seg_sq = |u: Vec3, v: Vec3| -> f64 {
+            let e = v - u;
+            let len_sq = e.length_sq();
+            let t = if len_sq > 1e-18 {
+                ((p - u).dot(e) / len_sq).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            (p - (u + e.scale(t))).length_sq()
+        };
+        return seg_sq(a, b).min(seg_sq(b, c)).min(seg_sq(c, a));
+    }
+    let denom = 1.0 / sum;
+    let v = vb * denom;
+    let w = vc * denom;
+    (p - (a + ab.scale(v) + ac.scale(w))).length_sq()
 }
 
 /// The silhouette score: the weakest of the body, sweep and arc parts
@@ -746,6 +887,12 @@ impl ReadCam {
                         ("tip_cm", Json::num(r(self.grip.tip_m * 100.0, 1))),
                         ("fingers", Json::Bool(self.grip.fingers)),
                         ("frames", Json::num(self.grip.frames as f64)),
+                        (
+                            "palm_surface_cm",
+                            Json::num(r(self.grip.palm_surface_m * 100.0, 1)),
+                        ),
+                        ("skin_wrap", Json::num(r(self.grip.skin_wrap, 3))),
+                        ("skin_based", Json::Bool(self.grip.skin_based)),
                         ("ok", Json::Bool(self.grip.score >= 0.5)),
                     ])
                 } else {
@@ -758,17 +905,33 @@ impl ReadCam {
 
     pub fn line(&self) -> String {
         let grip = if self.grip_applies {
-            format!(
-                ", grip {:.2} (handle {:.1} cm, curl {:.0} deg{})",
-                self.grip.score,
-                self.grip.handle_m * 100.0,
-                self.grip.curl_deg,
-                if self.grip.fingers {
-                    ""
-                } else {
-                    ", no fingers"
-                }
-            )
+            if self.grip.skin_based {
+                format!(
+                    ", grip {:.2} (palm {:.1} cm, wrap {:.0}%, handle {:.1} cm, curl {:.0} deg{})",
+                    self.grip.score,
+                    self.grip.palm_surface_m * 100.0,
+                    self.grip.skin_wrap * 100.0,
+                    self.grip.handle_m * 100.0,
+                    self.grip.curl_deg,
+                    if self.grip.fingers {
+                        ""
+                    } else {
+                        ", no fingers"
+                    }
+                )
+            } else {
+                format!(
+                    ", grip {:.2} (handle {:.1} cm, curl {:.0} deg{})",
+                    self.grip.score,
+                    self.grip.handle_m * 100.0,
+                    self.grip.curl_deg,
+                    if self.grip.fingers {
+                        ""
+                    } else {
+                        ", no fingers"
+                    }
+                )
+            }
         } else {
             String::new()
         };
@@ -850,6 +1013,11 @@ pub struct Stage {
     palm_roots: Vec<(usize, f64)>,
     finger_chains: Vec<Vec<usize>>,
     distal_mitten: bool,
+    /// Compact vertex indices (into `mesh.verts`) needed by `hand_tris`, plus
+    /// weapon-hand and palm triangles indexed into `hand_verts`.
+    hand_verts: Vec<usize>,
+    hand_tris: Vec<[usize; 3]>,
+    palm_tris: Vec<[usize; 3]>,
 }
 
 /// How far he must travel across the floor (metres at the game's
@@ -989,10 +1157,86 @@ impl Stage {
             }
         }
         let distal_mitten = !mitten_roots.is_empty() && mitten_roots.iter().all(|&m| m);
+        let mesh = Mesh::build(doc, &subject.rig)?;
+        let n_nodes = subject.rig.names.len();
+        let mut in_hand = vec![false; n_nodes];
+        let mut in_palm = vec![false; n_nodes];
+        if let Some(h) = hand {
+            let mut stack = vec![h];
+            in_hand[h] = true;
+            in_palm[h] = true;
+            while let Some(cur) = stack.pop() {
+                for &c in &subject.rig.children[cur] {
+                    let name = &subject.rig.names[c];
+                    if name.starts_with("Socket_") || crate::helpers::is_helper(name) {
+                        continue;
+                    }
+                    if !in_hand[c] {
+                        in_hand[c] = true;
+                        if name.starts_with("DEF-palm.") {
+                            in_palm[c] = true;
+                        }
+                        stack.push(c);
+                    }
+                }
+            }
+        }
+        let is_hand: Vec<bool> = mesh
+            .verts
+            .iter()
+            .map(|v| {
+                let w: f64 = v
+                    .inf
+                    .iter()
+                    .filter(|&&(j, _)| in_hand.get(j).copied().unwrap_or(false))
+                    .map(|&(_, w)| w)
+                    .sum();
+                w >= 0.5
+            })
+            .collect();
+        let is_palm: Vec<bool> = mesh
+            .verts
+            .iter()
+            .map(|v| {
+                let mut w_palm = 0.0;
+                let mut w_finger = 0.0;
+                for &(j, w) in &v.inf {
+                    if in_palm.get(j).copied().unwrap_or(false) {
+                        w_palm += w;
+                    } else if in_hand.get(j).copied().unwrap_or(false) {
+                        w_finger += w;
+                    }
+                }
+                w_palm >= 0.5 && w_palm > w_finger
+            })
+            .collect();
+        let mut remap = vec![usize::MAX; mesh.verts.len()];
+        let mut hand_verts = Vec::new();
+        let mut hand_tris = Vec::new();
+        let mut palm_tris = Vec::new();
+        for &[a, b, c] in &mesh.tris {
+            if is_hand[a] || is_hand[b] || is_hand[c] {
+                let mut tri = [0usize; 3];
+                for (slot, vi) in tri.iter_mut().zip([a, b, c]) {
+                    if remap[vi] == usize::MAX {
+                        remap[vi] = hand_verts.len();
+                        hand_verts.push(vi);
+                    }
+                    *slot = remap[vi];
+                }
+                hand_tris.push(tri);
+                if is_palm[a] || is_palm[b] || is_palm[c] {
+                    palm_tris.push(tri);
+                }
+            }
+        }
+        if palm_tris.is_empty() {
+            palm_tris = hand_tris.clone();
+        }
         Ok(Stage {
             cam: Camera::game(subject.forward(), opts, unit),
             unit,
-            mesh: Mesh::build(doc, &subject.rig)?,
+            mesh,
             socket,
             hand,
             hips: subject.map.node_of("DEF-spine"),
@@ -1002,6 +1246,9 @@ impl Stage {
             palm_roots,
             finger_chains,
             distal_mitten,
+            hand_verts,
+            hand_tris,
+            palm_tris,
         })
     }
 
@@ -1211,6 +1458,8 @@ impl Stage {
         if out.grip_applies {
             let (mut handles, mut axes, mut curls, mut tips) =
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+            let skin_based = !self.hand_tris.is_empty();
+            let (mut palm_surfaces, mut skin_wraps) = (Vec::new(), Vec::new());
             for f in load..=settle {
                 let Some((guard, tip)) = self.blade_at(&world[f]) else {
                     continue;
@@ -1243,6 +1492,64 @@ impl Stage {
                     curls.push(c);
                 }
                 tips.push(tip_d / self.unit);
+                if skin_based {
+                    let hand_pts = self.mesh.posed_subset(&world[f], &self.hand_verts);
+                    let mut min_d2 = f64::INFINITY;
+                    for &[ia, ib, ic] in &self.palm_tris {
+                        let d2 = point_tri_dist_sq(grip, hand_pts[ia], hand_pts[ib], hand_pts[ic]);
+                        if d2 < min_d2 {
+                            min_d2 = d2;
+                        }
+                    }
+                    palm_surfaces.push(min_d2.sqrt() / self.unit);
+
+                    let ref_v = if dir.x.abs() < 0.9 {
+                        Vec3::new(1.0, 0.0, 0.0)
+                    } else {
+                        Vec3::new(0.0, 1.0, 0.0)
+                    };
+                    let u = dir.cross(ref_v).normalized();
+                    let v = dir.cross(u);
+                    let mut bins = [false; SKIN_WRAP_BINS];
+                    let step_len = 0.012 * self.unit;
+                    for &[ia, ib, ic] in &self.hand_tris {
+                        let (a, b, c) = (hand_pts[ia], hand_pts[ib], hand_pts[ic]);
+                        let max_edge_len =
+                            (b - a).length().max((c - b).length()).max((a - c).length());
+                        let steps = ((max_edge_len / step_len).ceil() as usize).clamp(2, 6);
+                        let inv_steps = 1.0 / steps as f64;
+                        for i in 0..=steps {
+                            let u_b = i as f64 * inv_steps;
+                            for j in 0..=(steps - i) {
+                                let v_b = j as f64 * inv_steps;
+                                let w_b = 1.0 - u_b - v_b;
+                                let p = a.scale(w_b) + b.scale(u_b) + c.scale(v_b);
+                                let dv = p - grip;
+                                let along = dv.dot(dir) / self.unit;
+                                if along.abs() > SKIN_WRAP_HALF_LEN_M {
+                                    continue;
+                                }
+                                let rad = dv - dir.scale(along * self.unit);
+                                let r = rad.length() / self.unit;
+                                if r < SKIN_WRAP_MIN_R_M || r > SKIN_WRAP_MAX_R_M {
+                                    continue;
+                                }
+                                let r_unit = r * self.unit;
+                                let rx = rad.dot(u) / r_unit;
+                                let ry = rad.dot(v) / r_unit;
+                                let mut ang = detmath::acos(rx.clamp(-1.0, 1.0));
+                                if ry < 0.0 {
+                                    ang = std::f64::consts::TAU - ang;
+                                }
+                                let bin_f = (ang / std::f64::consts::TAU) * SKIN_WRAP_BINS as f64;
+                                let bi = bin_f.floor() as usize % SKIN_WRAP_BINS;
+                                bins[bi] = true;
+                            }
+                        }
+                    }
+                    let wrap = bins.iter().filter(|&&b| b).count() as f64 / SKIN_WRAP_BINS as f64;
+                    skin_wraps.push(wrap);
+                }
             }
             let curl = if curls.is_empty() {
                 None
@@ -1254,14 +1561,28 @@ impl Stage {
             } else {
                 GRIP_CURL_FULL_DEG
             };
+            let palm_surface_m = if skin_based {
+                median(&palm_surfaces)
+            } else {
+                0.0
+            };
+            let skin_wrap = if skin_based { median(&skin_wraps) } else { 0.0 };
+            let score = if skin_based {
+                skin_grip_of(palm_surface_m, skin_wrap, curl)
+            } else {
+                grip_of_full(median(&handles), curl, full_deg)
+            };
             out.grip = GripScore {
-                score: grip_of_full(median(&handles), curl, full_deg),
+                score,
                 handle_m: median(&handles),
                 axis_m: median(&axes),
                 curl_deg: curl.unwrap_or(0.0),
                 tip_m: median(&tips),
                 fingers: !curls.is_empty(),
                 frames: handles.len(),
+                palm_surface_m,
+                skin_wrap,
+                skin_based,
             };
             out.score = out.read_score.min(out.grip.score);
         } else {
