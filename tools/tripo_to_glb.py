@@ -263,13 +263,38 @@ def cap_rims(obj, limit):
                     else:
                         c[uv].uv = sum((at[v] for v in (a_, b_)), at[a_] * 0) / 2
         capped += 1
+    # A cap over a sliver (corners nearly in a line) is a face of no area,
+    # which the glTF exporter drops, opening the hole again: such faces are
+    # dissolved here, their corners merged, and whatever is still open is
+    # capped again.
+    dissolved = 0
+    for _ in range(3):
+        before = len(bm.faces)
+        bmesh.ops.dissolve_degenerate(bm, dist=1e-5 * size, edges=bm.edges[:])
+        dissolved += before - len(bm.faces)
+        bm.verts.index_update()
+        bm.edges.index_update()
+        again = [lp for lp in boundary_loops(bm) if sum(e.calc_length() for e in lp) <= limit * size]
+        if not again:
+            break
+        for lp in again:
+            verts = {v for e in lp for v in e.verts}
+            mid = bm.verts.new(sum((v.co for v in verts), Vector()) / len(verts))
+            for e in lp:
+                if len(e.link_faces) == 1:
+                    corner = next(c for c in e.link_faces[0].loops if c.edge == e)
+                    try:
+                        bm.faces.new((corner.link_loop_next.vert, corner.vert, mid))
+                    except ValueError:
+                        pass
     bm.verts.index_update()
     bm.edges.index_update()
     left = boundary_loops(bm)
+    degenerate = sum(1 for f in bm.faces if f.calc_area() < (1e-5 * size) ** 2)
     bm.to_mesh(obj.data)
     bm.free()
     obj.data.update()
-    return {"rims": len(loops), "capped": capped, "left": len(left)}
+    return {"rims": len(loops), "capped": capped, "left": len(left), "dissolved": dissolved, "degenerate_left": degenerate}
 
 
 def tris(obj):
