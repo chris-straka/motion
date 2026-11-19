@@ -297,6 +297,73 @@ def cap_rims(obj, limit):
     return {"rims": len(loops), "capped": capped, "left": len(left), "dissolved": dissolved, "degenerate_left": degenerate}
 
 
+def close_rims_in_file(path):
+    """The written file checked as the creature gates check it (seams
+    welded): any rim still open there (the glTF exporter drops some
+    triangles a closed Blender mesh has) gets the faces it lacks, from its
+    own corners, wound like its neighbours, in the primitive beside it.
+    Returns the counts."""
+    import creature_gates as cg
+    g = cg.Glb(path)
+    closed = skipped = 0
+    for m in g.j.get("meshes", []):
+        prims = [p for p in m.get("primitives", []) if p.get("mode", 4) == 4]
+        pos = {id(p): g.read(p["attributes"]["POSITION"]) for p in prims}
+        allp = [v for p in prims for v in pos[id(p)]]
+        if not allp:
+            continue
+        size = max(max(v[k] for v in allp) - min(v[k] for v in allp) for k in range(3)) or 1.0
+        q = size * 1e-5
+        key = lambda v: (round(v[0] / q), round(v[1] / q), round(v[2] / q))
+        faces, where = [], {}
+        for p in prims:
+            ks = [key(v) for v in pos[id(p)]]
+            for i, k in enumerate(ks):
+                where.setdefault((id(p), k), i)
+            for t in g.triangles(p):
+                kt = (ks[t[0]], ks[t[1]], ks[t[2]])
+                if len(set(kt)) == 3:
+                    faces.append((p, kt))
+        count = {}
+        for _, (a, b, c) in faces:
+            for e in ((a, b), (b, c), (c, a)):
+                u = (min(e), max(e))
+                count[u] = count.get(u, 0) + 1
+        nxt, owner = {}, {}
+        for p, (a, b, c) in faces:
+            for u, v in ((a, b), (b, c), (c, a)):
+                if count[(min(u, v), max(u, v))] == 1:
+                    nxt.setdefault(u, []).append(v)
+                    owner[u] = p
+        done, add = set(), {}
+        for start in list(nxt):
+            if start in done or len(nxt[start]) != 1:
+                continue
+            cyc, u = [start], nxt[start][0]
+            while u != start and u in nxt and len(nxt[u]) == 1 and u not in done and len(cyc) < 10000:
+                cyc.append(u)
+                u = nxt[u][0]
+            if u != start:
+                continue
+            done.update(cyc)
+            p = owner[start]
+            idx = [where.get((id(p), k)) for k in cyc]
+            if None in idx:
+                skipped += 1
+                continue
+            # the faces beside it run c0 -> c1 -> ...; the cap runs the other way
+            tri = [(idx[0], idx[i + 1], idx[i]) for i in range(1, len(idx) - 1)]
+            add.setdefault(id(p), (p, []))[1].extend(tri)
+            closed += 1
+        for p, tri in add.values():
+            old = [t[0] for t in g.read(p["indices"])] if "indices" in p else list(range(len(pos[id(p)])))
+            p["indices"] = g.add([(i,) for i in old + [x for t in tri for x in t]], 5125, "SCALAR", target=34963)
+    if closed:
+        g.write(path)
+    left = len(cg.open_rims(cg.Glb(path)))
+    return {"closed": closed, "skipped": skipped, "left": left}
+
+
 def tris(obj):
     return sum(len(p.vertices) - 2 for p in obj.data.polygons)
 
@@ -360,6 +427,8 @@ def main():
     bpy.ops.export_scene.gltf(filepath=o["out"], export_format="GLB", use_selection=False,
                               export_apply=True, export_yup=True, export_animations=False,
                               export_skins=False, export_morph=False)
+    if o["holes"] >= 1.0:
+        info["holes_in_file"] = close_rims_in_file(o["out"])
     if o["report"]:
         with open(o["report"], "w") as f:
             json.dump(info, f, indent=1)
