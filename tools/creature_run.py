@@ -450,7 +450,7 @@ def main():
     # is a fault of that suite, not a verdict on this creature (the orchestrator's ruling,
     # 2026-11-19), so it decides no creature's pass. Nothing in the suites is skipped.
     G["repo_tests"] = gate_tests(cache, repos)
-    reds = [f"{r}: {sum(len(s['failing']) for s in x['steps'] if s['exit'])} of its own tests fail"
+    reds = [f"{r}: {sum(1 for s in x['steps'] if s['exit'] for t in s['failing'] if t.startswith('test '))} of its own tests fail"
             + "".join(f" ({', '.join(t.split(' ... ')[0].replace('test ', '') for t in s['failing'] if t.startswith('test '))})"
                       for s in x["steps"] if s["exit"] and s["failing"])
             for r, x in G["repo_tests"]["repos"].items() if not x["pass"]]
