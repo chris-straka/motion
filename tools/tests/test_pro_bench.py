@@ -98,6 +98,9 @@ class ProBenchMotion8Tests(unittest.TestCase):
             hasattr(pro_bench, "check_planted_bad"),
             "pro_bench.py must expose check_planted_bad(out_dir=None) that verifies a planted bad clip fails",
         )
+        cli = pro_bench._cli() if hasattr(pro_bench, "_cli") else pro_bench.CLI
+        if not os.path.exists(cli) and not os.environ.get("MF_REQUIRE_CLI"):
+            self.skipTest(f"needs built motionforge CLI at {cli}")
         with tempfile.TemporaryDirectory() as td:
             res = pro_bench.check_planted_bad(td)
             self.assertIsInstance(res, dict)

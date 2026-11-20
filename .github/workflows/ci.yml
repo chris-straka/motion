@@ -32,6 +32,13 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo build --locked --release --offline
       - run: cargo test --locked --release --offline
+      - name: Pro bench planted bad-clip self-test
+        working-directory: .
+        env:
+          MF_REQUIRE_CLI: "1"
+        run: |
+          python3 -m unittest -v tools/tests/test_pro_bench.py
+          python3 tools/bench/pro_bench.py planted
 
   # Headless Blender: the extension end-to-end against the real CLI
   # (export/import, every operator, BVH batch -> manifest gate).
