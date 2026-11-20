@@ -410,11 +410,7 @@ fn grip_search_one(
 ) -> usize {
     ranked
         .iter()
-        .max_by(|a, b| {
-            a.0.dot(d)
-                .partial_cmp(&b.0.dot(d))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
+        .max_by(|a, b| a.0.dot(d).total_cmp(&b.0.dot(d)))
         .map(|x| x.1)
         .unwrap_or(0)
 }
@@ -1001,7 +997,7 @@ pub fn cmd_motion_check(cmd: &Cmd) -> CmdResult {
         ];
         r.push_str("worst:\n");
         for (what, list) in by.iter_mut() {
-            list.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then(a.0.cmp(&b.0)));
+            list.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
             let top: Vec<String> = list
                 .iter()
                 .take(3)

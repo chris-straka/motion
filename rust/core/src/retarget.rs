@@ -208,7 +208,7 @@ fn stance_mask(pts: &[Vec3], fps: f64) -> (Vec<bool>, Vec<f64>) {
         speeds.push((dx * dx + dy * dy).sqrt() * fps);
     }
     let mut sorted = speeds.clone();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    sorted.sort_by(f64::total_cmp);
     let med = sorted.get(sorted.len() / 2).copied().unwrap_or(0.0);
     let mut per_frame = speeds.clone();
     per_frame.push(*speeds.last().unwrap_or(&0.0));

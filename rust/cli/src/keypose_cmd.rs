@@ -223,6 +223,7 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
     };
     let li = roles.iter().position(|r| *r == Role::Load);
     let fi = roles.iter().position(|r| *r == Role::Follow);
+    let helper_drivers = helpers::Drivers::for_rig(&info.rig);
     let make = |carry: f64| {
         let mut staged = fits.clone();
         if let (true, Some(li), Some(fi)) = (carry > 0.0, li, fi) {
@@ -287,7 +288,7 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
         }
         let (mut frames, trep) = build(&info, &keys, &tp, &fp, two);
         for l in frames.iter_mut() {
-            helpers::drive(&info.rig, l);
+            helper_drivers.drive(&info.rig, l);
         }
         (frames, trep)
     };
@@ -334,7 +335,7 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
 
     // Write: every mapped bone and helper, the hips' translation.
     let mut nodes: Vec<usize> = info.map.pairs.iter().map(|(n, _)| *n).collect();
-    for h in helpers::driven_nodes(&info.rig) {
+    for h in helper_drivers.driven_nodes() {
         if !nodes.contains(&h) {
             nodes.push(h);
         }
@@ -366,7 +367,7 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
     if cmd.flag("key-clips") {
         for (k, f) in fits.iter().enumerate() {
             let mut l = f.locals.clone();
-            helpers::drive(&info.rig, &mut l);
+            helper_drivers.drive(&info.rig, &mut l);
             let tr: Vec<Vec<Trs>> = nodes
                 .iter()
                 .map(|&n| vec![l[n].unwrap_or(info.rig.rest[n])])

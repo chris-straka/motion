@@ -395,7 +395,7 @@ pub fn fit_views(
                 })
                 .collect();
             let mut sorted = res.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            sorted.sort_by(f64::total_cmp);
             let med = sorted[sorted.len() / 2];
             let cut = 2.5 * med.max(0.5);
             for (k, rk) in res.iter().enumerate() {

@@ -50,6 +50,10 @@ pub const DISTAL_MITTEN_PALM_SHARE: f64 = 0.55;
 pub const DISTAL_MITTEN_PALM_OFFSET: f64 = 0.008;
 pub const DISTAL_MITTEN_CURL: f64 = 0.72;
 
+fn is_distal_mitten(palm_len: f64, finger_len: f64) -> bool {
+    finger_len > 1e-9 && palm_len > 2.0 * finger_len
+}
+
 const FINGERS: [&str; 5] = ["f_index", "f_middle", "f_ring", "f_pinky", "thumb"];
 /// A fist when no grips file says: radians per joint (root, middle, tip).
 const DEFAULT_FIST: [[f64; 3]; 5] = [
@@ -275,7 +279,7 @@ pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
     let palm_vec = rig.head(mid[0]) - hand_head;
     let palm_len = palm_vec.length();
     let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
-    let distal_mitten = finger_len > 1e-9 && palm_len > 2.0 * finger_len;
+    let distal_mitten = is_distal_mitten(palm_len, finger_len);
     let (base, palm_offset) = if distal_mitten {
         (
             hand_head + palm_vec.scale(DISTAL_MITTEN_PALM_SHARE),
@@ -378,7 +382,7 @@ pub fn fingers(
             let curl_axis = fd.cross(palm).normalized();
             let palm_len = (rig.head(mid[0]) - rig.head(info.hand[s])).length();
             let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
-            let distal_mitten = finger_len > 1e-9 && palm_len > 2.0 * finger_len;
+            let distal_mitten = is_distal_mitten(palm_len, finger_len);
             let cap = if distal_mitten {
                 DISTAL_MITTEN_CURL
             } else {
@@ -725,5 +729,16 @@ mod tests {
             mean_deg >= 31.5 && mean_deg < 36.0,
             "distal mitten mean curl should be in 31.5..36 deg, got {mean_deg}"
         );
+    }
+
+    #[test]
+    fn distal_mitten_predicate_bounds() {
+        assert!(is_distal_mitten(0.184, 0.048));
+        assert!(!is_distal_mitten(0.096, 0.048));
+        assert!(!is_distal_mitten(0.05, 0.05));
+        assert!(!is_distal_mitten(0.10, 0.0));
+        assert!(!is_distal_mitten(0.10, 1e-12));
+        assert!(!is_distal_mitten(f64::NAN, 0.05));
+        assert!(!is_distal_mitten(0.20, f64::NAN));
     }
 }

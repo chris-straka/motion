@@ -164,7 +164,7 @@ fn find_extremes(angles: &[f64], params: &StylizeParams) -> Vec<usize> {
         })
         .collect();
     // Strongest first, ties to the earlier frame: deterministic.
-    candidates.sort_by(|a, b| angles[*b].partial_cmp(&angles[*a]).unwrap().then(a.cmp(b)));
+    candidates.sort_by(|a, b| angles[*b].total_cmp(&angles[*a]).then(a.cmp(b)));
     let mut kept = Vec::new();
     for c in candidates {
         if kept

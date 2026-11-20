@@ -238,7 +238,7 @@ pub fn clean_clip(
             let floating = low.iter().filter(|h| **h > CONTACT_HEIGHT * k).count();
             let sinking = low.iter().filter(|h| **h < -SINK_DEPTH * k).count();
             let mut sorted = low.clone();
-            sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            sorted.sort_by(f64::total_cmp);
             let c = sorted[(m - 1) / 10];
             // An offset is steady: the grounded half of the frames agree.
             let steady = sorted[(m - 1) / 2] - c < STEADY * k;
@@ -435,8 +435,9 @@ pub fn clean_clip(
     if let (Some(b), Some(o)) = (body, &opts.contact) {
         rep.contact = Some(crate::contact::fix_clip(b, rig, frames, times, name, o));
     }
+    let helper_drivers = crate::helpers::Drivers::for_rig(rig);
     for f in frames.iter_mut() {
-        crate::helpers::drive(rig, f);
+        helper_drivers.drive(rig, f);
     }
     rep
 }

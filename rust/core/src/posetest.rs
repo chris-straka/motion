@@ -184,6 +184,15 @@ fn bone_dir(rig: &Rig, map: &Mapping, name: &str, up: Vec3, fwd: Vec3) -> Vec3 {
 
 /// Locals for one pose (`None` = rest).
 pub fn pose_locals(rig: &Rig, map: &Mapping, spec: &PoseSpec) -> (Vec<Option<Trs>>, Vec<String>) {
+    pose_locals_with(rig, map, spec, &crate::helpers::Drivers::for_rig(rig))
+}
+
+fn pose_locals_with(
+    rig: &Rig,
+    map: &Mapping,
+    spec: &PoseSpec,
+    helper_drivers: &crate::helpers::Drivers,
+) -> (Vec<Option<Trs>>, Vec<String>) {
     let up = Vec3::new(0.0, 1.0, 0.0);
     let fwd = forward(rig, map);
     let left = up.cross(fwd).normalized();
@@ -231,7 +240,7 @@ pub fn pose_locals(rig: &Rig, map: &Mapping, spec: &PoseSpec) -> (Vec<Option<Trs
             locals[node] = Some(trs);
         }
     }
-    crate::helpers::drive(rig, &mut locals);
+    helper_drivers.drive(rig, &mut locals);
     (locals, skipped)
 }
 
@@ -243,6 +252,7 @@ pub fn build(
     samples: &[(String, Vec<Option<Trs>>)],
 ) -> Result<(Document, Json), String> {
     let rig = Rig::from_doc(doc)?;
+    let helper_drivers = crate::helpers::Drivers::for_rig(&rig);
     let map = humanoid::map_rig(&rig);
     if !map.complete() {
         return Err(format!(
@@ -266,7 +276,7 @@ pub fn build(
         Ok(())
     };
     for (i, spec) in humanoid_poses().iter().enumerate() {
-        let (locals, skipped) = pose_locals(&rig, &map, spec);
+        let (locals, skipped) = pose_locals_with(&rig, &map, spec, &helper_drivers);
         for s in skipped {
             if !skipped_all.contains(&s) {
                 skipped_all.push(s);
@@ -292,7 +302,8 @@ pub fn build(
         (
             "helpers",
             Json::Arr(
-                crate::helpers::driven_nodes(&rig)
+                helper_drivers
+                    .driven_nodes()
                     .iter()
                     .map(|&h| Json::str(&rig.names[h]))
                     .collect(),
@@ -311,6 +322,7 @@ pub fn clip_samples(
     fractions: &[f64],
 ) -> Result<Vec<(String, Vec<Option<Trs>>)>, String> {
     let rig = Rig::from_doc(animated)?;
+    let helper_drivers = crate::helpers::Drivers::for_rig(&rig);
     let map = humanoid::map_rig(&rig);
     let hips = map.node_of("DEF-spine");
     let mut out = Vec::new();
@@ -319,7 +331,7 @@ pub fn clip_samples(
             let mut locals = anim.sample(&rig, anim.duration * f);
             // Clips without helper keys: show the helpers as the pipeline
             // would bake them.
-            crate::helpers::drive_missing(&rig, &mut locals);
+            helper_drivers.drive_missing(&rig, &mut locals);
             if let Some(h) = hips {
                 if let Some(trs) = locals[h].as_mut() {
                     let rest = rig.rest[h].t;

@@ -386,7 +386,7 @@ fn percentile(mut xs: Vec<f64>, q: f64) -> f64 {
     if xs.is_empty() {
         return 0.0;
     }
-    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    xs.sort_by(f64::total_cmp);
     let i = ((xs.len() - 1) as f64 * q).round() as usize;
     xs[i.min(xs.len() - 1)]
 }
@@ -1125,10 +1125,7 @@ pub fn grip_search(
     let mut out: Vec<(Vec3, usize, f64)> = (0..n)
         .map(|i| (dirs[i], hits[i], clear[i] / samples.max(1) as f64))
         .collect();
-    out.sort_by(|x, y| {
-        x.1.cmp(&y.1)
-            .then(y.2.partial_cmp(&x.2).unwrap_or(std::cmp::Ordering::Equal))
-    });
+    out.sort_by(|x, y| x.1.cmp(&y.1).then(y.2.total_cmp(&x.2)));
     Ok(out)
 }
 
@@ -1306,12 +1303,8 @@ fn owners(rig: &Rig, map: &Mapping) -> Vec<usize> {
     (0..rig.names.len())
         .map(|i| {
             let name = map.canonical_of(i).unwrap_or("");
-            if let Some(d) = crate::helpers::driver_of(name) {
-                return map.node_of(&d).unwrap_or(i);
-            }
-            if name.starts_with("DEF-forearm_twist") {
-                let side = if name.ends_with(".L") { "L" } else { "R" };
-                return map.node_of(&format!("DEF-forearm.{side}")).unwrap_or(i);
+            if let Some(owner) = crate::helpers::owner_of(name) {
+                return map.node_of(&owner).unwrap_or(i);
             }
             if name.starts_with("DEF-pelvis") {
                 return map.node_of("DEF-spine").unwrap_or(i);
@@ -2534,11 +2527,10 @@ fn fix_arm(
                     src_slack.map(|s| s.surf_raw[f].as_slice()),
                     src_slack.map(|s| s.surf_margin[f].as_slice()),
                 );
-                let Some(h) = hs.iter().max_by(|a, b| {
-                    (a.depth / a.reach)
-                        .partial_cmp(&(b.depth / b.reach))
-                        .unwrap_or(std::cmp::Ordering::Equal)
-                }) else {
+                let Some(h) = hs
+                    .iter()
+                    .max_by(|a, b| (a.depth / a.reach).total_cmp(&(b.depth / b.reach)))
+                else {
                     break;
                 };
                 let wrist = world[arm.hand].t;
@@ -2875,11 +2867,10 @@ fn fix_arm_vs_arm(
                         src_slack.map(|s| s.surf_raw[f].as_slice()),
                         src_slack.map(|s| s.surf_margin[f].as_slice()),
                     );
-                    if let Some(st) = hs.iter().max_by(|a, b| {
-                        (a.depth / a.reach)
-                            .partial_cmp(&(b.depth / b.reach))
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                    }) {
+                    if let Some(st) = hs
+                        .iter()
+                        .max_by(|a, b| (a.depth / a.reach).total_cmp(&(b.depth / b.reach)))
+                    {
                         let step = st.normal.scale((st.depth + 0.5 * margin) / st.reach);
                         extra[ai] = clamp_vec(extra[ai] + step, max_shift);
                         if use_w[0] != use_w[1] && !use_w[ai] {

@@ -959,6 +959,7 @@ pub fn giant_glb(
     scale_document(&mut out, opts.scale)?;
 
     let rig = Rig::from_doc(&out)?;
+    let helper_drivers = crate::helpers::Drivers::for_rig(&rig);
     let map = humanoid::map_rig(&rig);
     let hips = map.node_of("DEF-spine").ok_or("no hips bone found")?;
     let height = rig_height(&out, &rig)?;
@@ -1071,7 +1072,7 @@ pub fn giant_glb(
                 l.r = canonical_quat(hips_rot.conj().mul(target_rot));
                 f[sp] = Some(l);
             }
-            crate::helpers::drive(&rig, f);
+            helper_drivers.drive(&rig, f);
             for &nd in &pinned {
                 f[nd] = Some(rig.rest[nd]);
             }

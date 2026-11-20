@@ -440,7 +440,7 @@ fn timing_plan_strike_and_planted_feet() {
         .map(|i| (hand(&frames[i]) - hand(&frames[i - 1])).length())
         .collect();
     let peak = (0..speed.len())
-        .max_by(|&a, &b| speed[a].partial_cmp(&speed[b]).unwrap())
+        .max_by(|&a, &b| speed[a].total_cmp(&speed[b]))
         .unwrap()
         + 1;
     assert!((14..=17).contains(&peak), "fastest frame {peak}");

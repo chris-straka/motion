@@ -78,7 +78,7 @@ impl Profile {
         if stations.is_empty() {
             return None;
         }
-        stations.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        stations.sort_by(|a, b| a.0.total_cmp(&b.0));
         Some(Profile {
             height: body.height,
             stations,

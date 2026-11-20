@@ -418,8 +418,8 @@ pub fn ground_blobs(mesh: &Mesh, band: f64, cell: f64, min_verts: usize) -> Vec<
         .collect();
     out.sort_by(|a, b| {
         b.0.cmp(&a.0)
-            .then(a.1.x.partial_cmp(&b.1.x).unwrap())
-            .then(a.1.y.partial_cmp(&b.1.y).unwrap())
+            .then(a.1.x.total_cmp(&b.1.x))
+            .then(a.1.y.total_cmp(&b.1.y))
     });
     out.into_iter().map(|(_, c)| c).collect()
 }
@@ -850,11 +850,7 @@ fn prune_joints(doc: &Document, rig: &Rig, pruned: &[usize]) -> Result<Document,
                             None => acc.push((new, w)),
                         }
                     }
-                    acc.sort_by(|a, b| {
-                        b.1.partial_cmp(&a.1)
-                            .unwrap_or(std::cmp::Ordering::Equal)
-                            .then(a.0.cmp(&b.0))
-                    });
+                    acc.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
                     acc.truncate(4);
                     let total: f64 = acc.iter().map(|(_, w)| w).sum();
                     let mut jrow = [0u16; 4];

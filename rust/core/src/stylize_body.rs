@@ -229,7 +229,7 @@ pub fn body_keys(raw: &[f64], prominence: f64, min_spacing: usize) -> Vec<usize>
             cands.push((at, prom));
         }
     }
-    cands.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then(a.0.cmp(&b.0)));
+    cands.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
     let mut keys = vec![0, n - 1];
     for (f, _) in cands {
         if keys.iter().all(|k| k.abs_diff(f) >= min_spacing) {
@@ -296,7 +296,7 @@ pub fn stylize_body(
                 (acc[b][1] - acc[b][0]) - (acc[a][1] - acc[a][0])
             };
             let peak = (0..n)
-                .max_by(|&a, &b| vel(a).length().partial_cmp(&vel(b).length()).unwrap())
+                .max_by(|&a, &b| vel(a).length().total_cmp(&vel(b).length()))
                 .unwrap_or(0);
             let dir = vel(peak).normalized();
             if let Some(load) = (1..peak).rev().find(|&f| vel(f).dot(dir) <= 0.0) {
@@ -540,6 +540,7 @@ pub fn stylize_glb(
     replant: bool,
 ) -> Result<(Document, Vec<GlbClipReport>), String> {
     let rig = Rig::from_doc(doc)?;
+    let helper_drivers = crate::helpers::Drivers::for_rig(&rig);
     let map = crate::humanoid::map_rig(&rig);
     let hips = map.node_of("DEF-spine").ok_or("no hips bone found")?;
     let anims = Animation::load_all(doc)?;
@@ -709,7 +710,7 @@ pub fn stylize_glb(
             (Some(b), Some(o)) => {
                 let c = crate::contact::fix_clip(b, &rig, &mut posed, &times, &anim.name, o);
                 for f in posed.iter_mut() {
-                    crate::helpers::drive(&rig, f);
+                    helper_drivers.drive(&rig, f);
                 }
                 Some(c)
             }

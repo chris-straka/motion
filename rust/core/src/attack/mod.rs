@@ -548,6 +548,7 @@ pub struct Solver<'a> {
     arm_axis: [Option<Vec3>; 2],
     leg_axis: [Option<Vec3>; 2],
     has_forearm_twist: [bool; 2],
+    helpers: crate::helpers::Drivers,
 }
 
 fn rad(deg: f64) -> f64 {
@@ -607,7 +608,17 @@ impl<'a> Solver<'a> {
         let free_fingers = grip::fingers(info, other, None, Some(grip::RELAXED), unit, &fist);
         let fist_fingers = grip::fingers(info, other, None, Some(0.85), unit, &fist);
         let ax = |a: usize, b: usize, c: usize| hinge_axis(rig, a, b, c);
-        let ft = crate::helpers::forearm_twists(rig);
+        let helpers = crate::helpers::Drivers::for_rig(rig);
+        let has_forearm_twist = [
+            helpers
+                .forearm_twists()
+                .iter()
+                .any(|(_, fo, _)| *fo == info.fore[0]),
+            helpers
+                .forearm_twists()
+                .iter()
+                .any(|(_, fo, _)| *fo == info.fore[1]),
+        ];
         Ok(Solver {
             info,
             h,
@@ -626,10 +637,8 @@ impl<'a> Solver<'a> {
                 ax(info.thigh[0], info.shin[0], info.foot[0]),
                 ax(info.thigh[1], info.shin[1], info.foot[1]),
             ],
-            has_forearm_twist: [
-                ft.iter().any(|(_, fo, _)| *fo == info.fore[0]),
-                ft.iter().any(|(_, fo, _)| *fo == info.fore[1]),
-            ],
+            has_forearm_twist,
+            helpers,
         })
     }
 
@@ -1038,7 +1047,7 @@ impl<'a> Solver<'a> {
                 s: a.s,
             });
         }
-        crate::helpers::drive(rig, &mut l);
+        self.helpers.drive(rig, &mut l);
         (l, miss)
     }
 }
@@ -1158,7 +1167,7 @@ pub fn build(
     for &(n, _) in solver.grip_fingers.iter().chain(&solver.free_fingers) {
         nodes.push(n);
     }
-    for h in crate::helpers::driven_nodes(&info.rig) {
+    for h in solver.helpers.driven_nodes() {
         nodes.push(h);
     }
     nodes.sort_unstable();

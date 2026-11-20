@@ -517,6 +517,8 @@ pub fn retarget_with(
             }
         }
     }
+    let helper_drivers = crate::helpers::Drivers::for_rig(&tgt.rig);
+    let helper_nodes = helper_drivers.driven_nodes();
     for (si, ai, base) in &jobs {
         let label = &sources[*si].0;
         let src = &mapped[*si];
@@ -534,9 +536,8 @@ pub fn retarget_with(
             let mut times = Vec::with_capacity(frames);
             // Driven nodes: the shared bones, then the twist/helpers baked
             // from their drivers (the game needs no constraint code).
-            let helpers = crate::helpers::driven_nodes(&tgt.rig);
             let mut nodes: Vec<usize> = transfer.shared.iter().map(|(t, _)| *t).collect();
-            for h in helpers {
+            for &h in &helper_nodes {
                 if !nodes.contains(&h) {
                     nodes.push(h);
                 }
@@ -594,7 +595,7 @@ pub fn retarget_with(
                 _ => None,
             };
             for mut locals in posed {
-                crate::helpers::drive(&tgt.rig, &mut locals);
+                helper_drivers.drive(&tgt.rig, &mut locals);
                 for (k, node) in nodes.iter().enumerate() {
                     tracks[k].push(locals[*node].unwrap_or(tgt.rig.rest[*node]));
                 }
