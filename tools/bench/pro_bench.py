@@ -2,10 +2,12 @@
 """Correctness benchmark against professional clips (stdlib only; drives the
 motionforge CLI).
 
-    pro_bench.py calibrate [--out DIR] [--libs ual1,ual2]
+    pro_bench.py calibrate [--out DIR] [--libs ual1,ual2] [--lib NAME=PATH.glb ...]
     pro_bench.py run --target andras=RIG.glb [--target name=RIG.glb ...]
-                     [--libs ual1,ual2] [--clips a,b] [--stages ...] [--out DIR]
+                     [--libs ual1,ual2] [--lib NAME=PATH.glb ...]
+                     [--heldout mixamo] [--clips a,b] [--stages ...] [--out DIR]
                      [--jobs N]
+    pro_bench.py planted [--out DIR]
     pro_bench.py report DIR | recompare DIR | why DIR TARGET STAGE
     pro_bench.py rescore DIR [--target NAME]   (GLBs as they are, through-body kept)
 
@@ -58,9 +60,13 @@ import argparse
 import concurrent.futures as cf
 import datetime
 import json
+import math
 import os
+import shutil
+import struct
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -71,6 +77,8 @@ LIBS = {
     "ual2": os.path.join(FORGE, "clips", "ual2", "UAL2_Standard_RM.glb"),
 }
 MANNEQUIN_F = os.path.join(FORGE, "clips", "ual2", "Mannequin_F.glb")
+DEFAULT_HELDOUT = ["mixamo"]
+PLANTED_CHECKS = ("sink", "skate", "plants", "hold", "pose")
 STAGES = ["raw", "retarget", "clean", "contact", "stylize"]
 # Clips that are a pose, not a motion.
 SKIP = {"A_TPose"}
@@ -83,6 +91,77 @@ TOL = {
 }
 CHECKS = ["plants", "hold", "skate", "sink", "float", "through", "limits", "rough", "timing", "pose"]
 
+_GLB_MAGIC = 0x46546C67
+_GLB_CHUNK_JSON = 0x4E4F534A
+_GLB_CHUNK_BIN = 0x004E4942
+
+
+def _cli():
+    return os.environ.get("MOTIONFORGE_BIN") or CLI
+
+
+def _parse_lib_specs(specs):
+    parsed = {}
+    for spec in specs or []:
+        if "=" not in spec:
+            raise ValueError(f"--lib expects NAME=PATH.glb, got: {spec!r}")
+        name, path = spec.split("=", 1)
+        name = name.strip()
+        if not name or not path:
+            raise ValueError(f"--lib expects NAME=PATH.glb, got: {spec!r}")
+        parsed[name] = path
+    return parsed
+
+
+def discover_libs(extra=None):
+    """Resolve built-in libraries, auto-discovered held-out Mixamo, and any
+    explicit --lib NAME=PATH overrides."""
+    forge = os.environ.get("FORGE_BENCH", FORGE)
+    libs = {
+        "ual1": os.path.join(forge, "clips", "UAL1_Standard_RM.glb"),
+        "ual2": os.path.join(forge, "clips", "ual2", "UAL2_Standard_RM.glb"),
+    }
+    for k, v in LIBS.items():
+        if k not in ("ual1", "ual2") or forge == FORGE:
+            libs[k] = v
+    fleet_mixamo = os.environ.get("FLEET_DATA_MOTION_MIXAMO_HELDOUT", "")
+    candidates = []
+    if fleet_mixamo:
+        candidates.append(os.path.join(fleet_mixamo, "mixamo_heldout.glb"))
+    candidates.append(os.path.join(forge, "clips", "mixamo", "mixamo_heldout.glb"))
+    for cand in candidates:
+        if os.path.isfile(cand):
+            libs["mixamo"] = cand
+            break
+    libs.update(_parse_lib_specs(extra))
+    return libs
+
+
+def _select_libs(libs_arg, extra_specs):
+    extra = _parse_lib_specs(extra_specs)
+    libs = discover_libs(extra_specs)
+    if libs_arg is None:
+        names = ["ual1", "ual2"] + [k for k in extra if k not in ("ual1", "ual2")]
+    else:
+        names = []
+        for part in libs_arg.split(","):
+            name = part.strip()
+            if name and name not in names:
+                names.append(name)
+    missing = [n for n in names if n not in libs]
+    if missing:
+        raise SystemExit(
+            f"unknown library {', '.join(missing)} "
+            "(pass --lib NAME=PATH.glb or set FLEET_DATA_MOTION_MIXAMO_HELDOUT / FORGE_BENCH)"
+        )
+    return libs, names
+
+
+def _parse_heldout(raw):
+    if raw is None:
+        return list(DEFAULT_HELDOUT)
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
 
 def run(cmd, out=None):
     p = subprocess.run(cmd, capture_output=True, text=True)
@@ -94,24 +173,34 @@ def run(cmd, out=None):
     return p.stdout
 
 
+def _load_json(path):
+    with open(path) as fh:
+        return json.load(fh)
+
+
+def _dump_json(path, obj, indent=None):
+    with open(path, "w") as fh:
+        json.dump(obj, fh, indent=indent)
+
+
 def check(glb, out, clips=None, keep_through=False):
     """`motion check --tracks` into `out`. keep_through: skip the slow
     limbs-through-the-body check and keep that part of the JSON already at
     `out` (for re-scoring the other measures on unchanged GLBs)."""
-    cmd = [CLI, "motion", "check", glb, "--tracks"]
+    cmd = [_cli(), "motion", "check", glb, "--tracks"]
     if clips:
         cmd += ["--clip", ",".join(clips)]
     if not keep_through:
         run(cmd, out)
-        return json.load(open(out))
-    old = {c["name"]: c for c in json.load(open(out))["clips"]}
+        return _load_json(out)
+    old = {c["name"]: c for c in _load_json(out)["clips"]}
     new = json.loads(run(cmd + ["--no-through"]))
     for c in new["clips"]:
         o = old[c["name"]]
         if "through_body" in o:
             c["through_body"] = o["through_body"]
         c["detail"]["through"] = o["detail"]["through"]
-    json.dump(new, open(out, "w"))
+    _dump_json(out, new)
     return new
 
 
@@ -306,12 +395,13 @@ def defects(c):
 def calibrate(a):
     out = a.out or os.path.join(ROOT, "bench", "pro", "cal-" + datetime.date.today().isoformat())
     os.makedirs(out, exist_ok=True)
+    libs, lib_names = _select_libs(a.libs, getattr(a, "lib", None))
     res = {"commit": commit(), "libs": {}}
     kinds = ["skate", "sink", "float", "through", "limits", "rough"]
     lines = [f"# Pro clips on their own mannequin ({res['commit']})", "",
-             "Defects `motion check` reports on the Quaternius clips (rough = back-and-forth peak over 5 mm).", ""]
-    for lib in a.libs.split(","):
-        j = check(LIBS[lib], os.path.join(out, f"{lib}.json"))
+             "Defects `motion check` reports on the pro clips (rough = back-and-forth peak over 5 mm).", ""]
+    for lib in lib_names:
+        j = check(libs[lib], os.path.join(out, f"{lib}.json"))
         clips = [c for c in j["clips"] if c["name"] not in SKIP]
         per = {c["name"]: defects(c) for c in clips}
         counts = {k: sum(1 for d in per.values() if k in d) for k in kinds}
@@ -323,9 +413,205 @@ def calibrate(a):
             if d:
                 lines.append(f"- {name}: " + "; ".join(f"{k} {v}" for k, v in d.items()))
         lines.append("")
-    json.dump(res, open(os.path.join(out, "calib.json"), "w"), indent=1)
-    open(os.path.join(out, "calib.md"), "w").write("\n".join(lines) + "\n")
+    _dump_json(os.path.join(out, "calib.json"), res, indent=1)
+    with open(os.path.join(out, "calib.md"), "w") as fh:
+        fh.write("\n".join(lines) + "\n")
     print("\n".join(lines))
+
+
+# ---------------------------------------------------------------- planted bad clip
+
+def _read_glb(path):
+    with open(path, "rb") as fh:
+        data = fh.read()
+    if len(data) < 12:
+        raise ValueError(f"truncated GLB: {path}")
+    magic, version, total = struct.unpack_from("<III", data, 0)
+    if magic != _GLB_MAGIC or version != 2 or total > len(data):
+        raise ValueError(f"invalid GLB header: {path}")
+    at = 12
+    gltf = None
+    bin_data = bytearray()
+    while at + 8 <= total:
+        clen, ctype = struct.unpack_from("<II", data, at)
+        start = at + 8
+        end = start + clen
+        if end > total:
+            raise ValueError(f"truncated GLB chunk: {path}")
+        if ctype == _GLB_CHUNK_JSON and gltf is None:
+            gltf = json.loads(data[start:end].decode("utf-8").rstrip(" \x00"))
+        elif ctype == _GLB_CHUNK_BIN and not bin_data:
+            bin_data = bytearray(data[start:end])
+        at = end
+    if gltf is None:
+        raise ValueError(f"GLB missing JSON chunk: {path}")
+    return gltf, bin_data
+
+
+def _write_glb(path, gltf, bin_data):
+    buf = bytearray(bin_data)
+    while len(buf) % 4 != 0:
+        buf.append(0)
+    if buf:
+        gltf["buffers"] = [{"byteLength": len(buf)}]
+    json_bytes = bytearray(json.dumps(gltf, separators=(",", ":")).encode("utf-8"))
+    while len(json_bytes) % 4 != 0:
+        json_bytes.append(0x20)
+    total = 12 + 8 + len(json_bytes) + (8 + len(buf) if buf else 0)
+    with open(path, "wb") as fh:
+        fh.write(struct.pack("<III", _GLB_MAGIC, 2, total))
+        fh.write(struct.pack("<II", len(json_bytes), _GLB_CHUNK_JSON))
+        fh.write(json_bytes)
+        if buf:
+            fh.write(struct.pack("<II", len(buf), _GLB_CHUNK_BIN))
+            fh.write(buf)
+
+
+def _corrupt_glb_clip(src_glb, dst_glb):
+    """Create a deliberately broken clip from `src_glb` by sinking the root
+    -0.15 m into the floor, adding 0.35 m lateral skate drift, and rotating leg
+    joints by 60 deg on the GLB animation accessors (stdlib only)."""
+    gltf, bin_data = _read_glb(src_glb)
+    anims = gltf.get("animations") or []
+    if not anims:
+        raise RuntimeError(f"no animations in {src_glb}")
+    anim = anims[0]
+    nodes = gltf.get("nodes") or []
+    accessors = gltf.get("accessors") or []
+    views = gltf.get("bufferViews") or []
+    samplers = anim.get("samplers") or []
+    half = math.radians(60.0) / 2.0
+    qx, qy, qz, qw = math.sin(half), 0.0, 0.0, math.cos(half)
+
+    seen_acc = set()
+    touched_t = 0
+    touched_r = 0
+
+    for ch in anim.get("channels") or []:
+        tgt = ch.get("target") or {}
+        path = tgt.get("path")
+        node_idx = tgt.get("node")
+        node_name = ""
+        if node_idx is not None and 0 <= node_idx < len(nodes):
+            node_name = (nodes[node_idx].get("name") or "").lower()
+        out_idx = samplers[ch["sampler"]]["output"]
+        if out_idx in seen_acc:
+            continue
+        acc = accessors[out_idx]
+        if acc.get("componentType") != 5126:
+            continue
+        bv = views[acc["bufferView"]]
+        base = bv.get("byteOffset", 0) + acc.get("byteOffset", 0)
+        count = acc["count"]
+        if path == "translation" and acc.get("type") == "VEC3":
+            stride = bv.get("byteStride") or 12
+            mins = [float("inf")] * 3
+            maxs = [float("-inf")] * 3
+            for i in range(count):
+                off = base + i * stride
+                x, y, z = struct.unpack_from("<fff", bin_data, off)
+                frac = i / max(count - 1, 1)
+                nx, ny, nz = x + 0.35 * frac, y - 0.15, z
+                struct.pack_into("<fff", bin_data, off, nx, ny, nz)
+                for k, val in enumerate((nx, ny, nz)):
+                    if val < mins[k]:
+                        mins[k] = val
+                    if val > maxs[k]:
+                        maxs[k] = val
+            if "min" in acc:
+                acc["min"] = mins
+            if "max" in acc:
+                acc["max"] = maxs
+            seen_acc.add(out_idx)
+            touched_t += 1
+        elif (
+            path == "rotation"
+            and acc.get("type") == "VEC4"
+            and any(tok in node_name for tok in ("shin", "thigh", "knee", "leg"))
+        ):
+            stride = bv.get("byteStride") or 16
+            mins = [float("inf")] * 4
+            maxs = [float("-inf")] * 4
+            for i in range(count):
+                off = base + i * stride
+                x, y, z, w = struct.unpack_from("<ffff", bin_data, off)
+                nx = w * qx + x * qw + y * qz - z * qy
+                ny = w * qy - x * qz + y * qw + z * qx
+                nz = w * qz + x * qy - y * qx + z * qw
+                nw = w * qw - x * qx - y * qy - z * qz
+                nrm = math.sqrt(nx * nx + ny * ny + nz * nz + nw * nw) or 1.0
+                nx, ny, nz, nw = nx / nrm, ny / nrm, nz / nrm, nw / nrm
+                struct.pack_into("<ffff", bin_data, off, nx, ny, nz, nw)
+                for k, val in enumerate((nx, ny, nz, nw)):
+                    if val < mins[k]:
+                        mins[k] = val
+                    if val > maxs[k]:
+                        maxs[k] = val
+            if "min" in acc:
+                acc["min"] = mins
+            if "max" in acc:
+                acc["max"] = maxs
+            seen_acc.add(out_idx)
+            touched_r += 1
+
+    if touched_t == 0 and touched_r == 0:
+        raise RuntimeError(f"failed to locate animation channels to corrupt in {src_glb}")
+    _write_glb(dst_glb, gltf, bin_data)
+    return {"translation_channels": touched_t, "rotation_channels": touched_r}
+
+
+def check_planted_bad(out_dir=None):
+    """Self-test the bench comparator: generate a synthetic walk GLB via
+    `motionforge fixture-glb`, verify an uncorrupted control passes `compare()`
+    with 0 failures, and verify a deliberately corrupted planted bad clip fails
+    at least one real check (`sink`, `skate`, `plants`, `hold`, or `pose`)."""
+    tmp = None
+    if out_dir is None:
+        tmp = tempfile.TemporaryDirectory(prefix="pro-bench-planted-")
+        work = tmp.name
+    else:
+        work = os.fspath(out_dir)
+        os.makedirs(work, exist_ok=True)
+    try:
+        pro_glb = os.path.join(work, "pro.glb")
+        ctrl_glb = os.path.join(work, "control.glb")
+        bad_glb = os.path.join(work, "planted_bad.glb")
+        run([_cli(), "fixture-glb", "--naming", "def", "--walk", "--output", pro_glb])
+        shutil.copyfile(pro_glb, ctrl_glb)
+        corrupted = _corrupt_glb_clip(pro_glb, bad_glb)
+
+        pro_j = check(pro_glb, os.path.join(work, "pro.json"))
+        ctrl_j = check(ctrl_glb, os.path.join(work, "control.json"))
+        bad_j = check(bad_glb, os.path.join(work, "planted_bad.json"))
+
+        pro_clip = pro_j["clips"][0]
+        clip_name = pro_clip["name"]
+        ctrl_clip = next(c for c in ctrl_j["clips"] if c["name"] == clip_name)
+        bad_clip = next(c for c in bad_j["clips"] if c["name"] == clip_name)
+
+        ctrl_cmp = compare(pro_clip, ctrl_clip, "clean")
+        bad_cmp = compare(pro_clip, bad_clip, "clean")
+        failed_checks = list(bad_cmp["fail"])
+        control_failed_checks = list(ctrl_cmp["fail"])
+        expected_hits = [c for c in failed_checks if c in PLANTED_CHECKS]
+        ok = bool(expected_hits) and not control_failed_checks
+        res = {
+            "ok": ok,
+            "clip": clip_name,
+            "failed_checks": failed_checks,
+            "expected_hits": expected_hits,
+            "control_failed_checks": control_failed_checks,
+            "corrupted": corrupted,
+            "planted_metrics": bad_cmp,
+            "control_metrics": ctrl_cmp,
+        }
+        if out_dir is not None:
+            with open(os.path.join(work, "planted.json"), "w") as fh:
+                json.dump(res, fh, indent=1)
+        return res
+    finally:
+        if tmp is not None:
+            tmp.cleanup()
 
 
 # ---------------------------------------------------------------- run
@@ -341,25 +627,25 @@ def clip_names(glb_json):
 
 def stage_files(target, rig, lib, src, clips, stages, out):
     """Run the stages for one target and library; returns {stage: json path}."""
+    cli = _cli()
     w = os.path.join(out, target, lib)
     os.makedirs(w, exist_ok=True)
     pick = ",".join(clips)
-    paths = {}
     g = lambda s: os.path.join(w, f"{s}.glb")
-    log = open(os.path.join(w, "log.txt"), "w")
-    if "raw" in stages:
-        log.write(run([CLI, "animate", "--input", rig, "--clips", src, "--output", g("raw"), "--pick", pick,
-                       "--no-pin", "--no-contact"]))
-    log.write(run([CLI, "animate", "--input", rig, "--clips", src, "--output", g("retarget"), "--pick", pick]))
-    if "clean" in stages or "stylize" in stages:
-        log.write(run([CLI, "clean", "--input", g("retarget"), "--output", g("clean"), "--clip", pick,
-                       "--report", os.path.join(w, "clean_report.json")]))
-    if "contact" in stages:
-        log.write(run([CLI, "clean", "--input", g("retarget"), "--output", g("contact"), "--clip", pick,
-                       "--contact", "--report", os.path.join(w, "contact_report.json")]))
-    attacks = [c for c in clips if is_attack(c)]
-    if "stylize" in stages and attacks:
-        log.write(run([CLI, "stylize", "--input", g("clean"), "--output", g("stylize"), "--clip", ",".join(attacks)]))
+    with open(os.path.join(w, "log.txt"), "w") as log:
+        if "raw" in stages:
+            log.write(run([cli, "animate", "--input", rig, "--clips", src, "--output", g("raw"), "--pick", pick,
+                           "--no-pin", "--no-contact"]))
+        log.write(run([cli, "animate", "--input", rig, "--clips", src, "--output", g("retarget"), "--pick", pick]))
+        if "clean" in stages or "stylize" in stages:
+            log.write(run([cli, "clean", "--input", g("retarget"), "--output", g("clean"), "--clip", pick,
+                           "--report", os.path.join(w, "clean_report.json")]))
+        if "contact" in stages:
+            log.write(run([cli, "clean", "--input", g("retarget"), "--output", g("contact"), "--clip", pick,
+                           "--contact", "--report", os.path.join(w, "contact_report.json")]))
+        attacks = [c for c in clips if is_attack(c)]
+        if "stylize" in stages and attacks:
+            log.write(run([cli, "stylize", "--input", g("clean"), "--output", g("stylize"), "--clip", ",".join(attacks)]))
     jobs = []
     for s in stages:
         if s == "stylize" and not attacks:
@@ -372,26 +658,35 @@ def stage_files(target, rig, lib, src, clips, stages, out):
 def main_run(a):
     out = a.out or os.path.join(ROOT, "bench", "pro", datetime.date.today().isoformat())
     os.makedirs(out, exist_ok=True)
+    libs, lib_names = _select_libs(a.libs, getattr(a, "lib", None))
+    heldout = _parse_heldout(getattr(a, "heldout", None))
     stages = a.stages.split(",")
     targets = dict(t.split("=", 1) for t in a.target)
     if a.mannequin_f and os.path.exists(MANNEQUIN_F):
         std = os.path.join(out, "mannequin_f_std.glb")
-        run([CLI, "standardize", "--input", MANNEQUIN_F, "--output", std])
+        run([_cli(), "standardize", "--input", MANNEQUIN_F, "--output", std])
         targets["mannequin_f"] = std
     want = a.clips.split(",") if a.clips else None
-    results = {"commit": commit(), "date": datetime.datetime.now().isoformat(timespec="seconds"),
-               "stages": stages, "tol": TOL, "targets": {}}
+    results = {
+        "commit": commit(),
+        "date": datetime.datetime.now().isoformat(timespec="seconds"),
+        "stages": stages,
+        "heldout": heldout,
+        "libs": {lib: libs[lib] for lib in lib_names},
+        "tol": TOL,
+        "targets": {},
+    }
     with cf.ThreadPoolExecutor(max_workers=a.jobs) as ex:
         pros = {}
-        for lib in a.libs.split(","):
-            pros[lib] = ex.submit(check, LIBS[lib], os.path.join(out, f"pro_{lib}.json"))
+        for lib in lib_names:
+            pros[lib] = ex.submit(check, libs[lib], os.path.join(out, f"pro_{lib}.json"))
         pros = {lib: f.result() for lib, f in pros.items()}
         jobs = []
         for target, rig in targets.items():
             for lib, pj in pros.items():
                 clips = [c for c in clip_names(pj) if c not in SKIP and (want is None or c in want)]
                 if clips:
-                    jobs.append((target, lib, ex.submit(stage_files, target, rig, lib, LIBS[lib], clips, stages, out)))
+                    jobs.append((target, lib, ex.submit(stage_files, target, rig, lib, libs[lib], clips, stages, out)))
         checks = []
         for target, lib, f in jobs:
             for s, glb, js, clips in f.result():
@@ -404,25 +699,48 @@ def main_run(a):
                 key = f"{lib}/{c['name']}"
                 T["clips"].setdefault(key, {})[s] = compare(pro[c["name"]], c, s)
             print(f"{target} {lib} {s}: {len(tj['clips'])} clips", flush=True)
-    json.dump(results, open(os.path.join(out, "results.json"), "w"), indent=1)
+    _dump_json(os.path.join(out, "results.json"), results, indent=1)
     report(out)
+
+
+def _saved_libs(out, old):
+    """Resolve library paths for an existing run dir, combining results.json,
+    discovered libs, and any pro_<lib>.json files already in `out`."""
+    libs = discover_libs()
+    for k, v in (old.get("libs") or {}).items():
+        if k not in libs or os.path.exists(v):
+            libs[k] = v
+    ordered = []
+    for k in list((old.get("libs") or {}).keys()) + list(libs.keys()):
+        if k not in ordered:
+            ordered.append(k)
+    if os.path.isdir(out):
+        for fn in sorted(os.listdir(out)):
+            if fn.startswith("pro_") and fn.endswith(".json"):
+                k = fn[len("pro_"):-len(".json")]
+                if k and k not in ordered:
+                    ordered.append(k)
+    return libs, ordered
 
 
 def rescore(out, only, jobs):
     """Score a run's stage GLBs again (the through-body part kept), then
     compare: after a change to any other measure."""
-    old = json.load(open(os.path.join(out, "results.json")))
+    old = _load_json(os.path.join(out, "results.json"))
+    libs, lib_names = _saved_libs(out, old)
     work = []
-    for lib in LIBS:
-        if os.path.exists(os.path.join(out, f"pro_{lib}.json")):
-            work.append((LIBS[lib], os.path.join(out, f"pro_{lib}.json"), None, False))
+    for lib in lib_names:
+        pj = os.path.join(out, f"pro_{lib}.json")
+        if os.path.exists(pj):
+            if lib in libs and os.path.exists(libs[lib]):
+                work.append((libs[lib], pj, None, False))
             for target in old["targets"]:
                 if only and target not in only:
                     continue
                 for s in old["stages"]:
                     g, js = (os.path.join(out, target, lib, f"{s}.{e}") for e in ("glb", "json"))
                     if os.path.exists(g) and os.path.exists(js):
-                        names = [c["name"] for c in json.load(open(js))["clips"]]
+                        names = [c["name"] for c in _load_json(js)["clips"]]
                         work.append((g, js, names, True))
     with cf.ThreadPoolExecutor(max_workers=jobs) as ex:
         for f in [ex.submit(check, *w) for w in work]:
@@ -433,28 +751,38 @@ def rescore(out, only, jobs):
 def recompare(out):
     """Rebuild results.json from the motion check JSONs a run left in
     `out` (no CLI runs): for a changed check or tolerance."""
-    old = json.load(open(os.path.join(out, "results.json")))
-    results = {"commit": old["commit"], "date": old["date"], "stages": old["stages"], "tol": TOL, "targets": {}}
+    old = _load_json(os.path.join(out, "results.json"))
+    _, lib_names = _saved_libs(out, old)
+    results = {
+        "commit": old["commit"],
+        "date": old["date"],
+        "stages": old["stages"],
+        "heldout": old.get("heldout", list(DEFAULT_HELDOUT)),
+        "tol": TOL,
+        "targets": {},
+    }
+    if "libs" in old:
+        results["libs"] = old["libs"]
     for target in old["targets"]:
-        for lib in LIBS:
+        for lib in lib_names:
             pj = os.path.join(out, f"pro_{lib}.json")
             if not os.path.exists(pj):
                 continue
-            pro = {c["name"]: c for c in json.load(open(pj))["clips"]}
+            pro = {c["name"]: c for c in _load_json(pj)["clips"]}
             for s in old["stages"]:
                 sj = os.path.join(out, target, lib, f"{s}.json")
                 if not os.path.exists(sj):
                     continue
-                tj = json.load(open(sj))
+                tj = _load_json(sj)
                 T = results["targets"].setdefault(target, {"height_m": tj["height_m"], "clips": {}})
                 for c in tj["clips"]:
                     T["clips"].setdefault(f"{lib}/{c['name']}", {})[s] = compare(pro[c["name"]], c, s)
-    json.dump(results, open(os.path.join(out, "results.json"), "w"), indent=1)
+    _dump_json(os.path.join(out, "results.json"), results, indent=1)
 
 
 def why(out, target, stage):
     """Per check, the clips that fail it at a stage, with the numbers."""
-    R = json.load(open(os.path.join(out, "results.json")))
+    R = _load_json(os.path.join(out, "results.json"))
     clips = R["targets"][target]["clips"]
     show = {"plants": ["plant_iou"], "hold": ["hold_cm", "hold_pro_cm"], "skate": ["skate_cm", "skate_pro_cm"],
             "sink": ["sink_new", "sink_cm"], "float": ["float_extra"], "through": ["through_new"],
@@ -473,47 +801,80 @@ def why(out, target, stage):
     print("limit frames past the pro's, by joint:", dict(sorted(labels.items(), key=lambda x: -x[1])))
 
 
+def _clip_lib(key):
+    return key.split("/", 1)[0] if "/" in key else ""
+
+
+def _append_split_section(lines, label, stages, subset):
+    counts = {}
+    for name in sorted(subset):
+        lib = _clip_lib(name)
+        counts[lib] = counts.get(lib, 0) + 1
+    libs_desc = ", ".join(f"{lib}: {cnt}" for lib, cnt in counts.items() if lib)
+    heading = f"### {label} ({libs_desc}) — {len(subset)} clips" if libs_desc else f"### {label} — {len(subset)} clips"
+    lines += [
+        heading,
+        "",
+        "| stage | clips | pass | " + " | ".join(CHECKS) + " | IoU (mean) | hold cm (pro) | sink fr | "
+        "through fr | limit fr | rough mm (pro) |",
+        "|" + "---|" * (len(CHECKS) + 9),
+    ]
+    for s in stages:
+        rows = [c[s] for c in subset.values() if s in c]
+        if not rows:
+            continue
+        def mean(k, fmt):
+            xs = [r[k] for r in rows if r[k] is not None]
+            return format(sum(xs) / len(xs), fmt) if xs else "-"
+        lines.append(
+            f"| {s} | {len(rows)} | {sum(1 for r in rows if not r['fail'])} | "
+            + " | ".join(str(sum(1 for r in rows if ch in r["fail"])) for ch in CHECKS)
+            + f" | {mean('plant_iou', '.2f')} | {mean('hold_cm', '.1f')} ({mean('hold_pro_cm', '.1f')}) | "
+            + f"{sum(r['sink_new'] for r in rows)} | {sum(r['through_new'] for r in rows)} | "
+            + f"{sum(r['limits_new'] for r in rows)} | {mean('rough_mm', '.2f')} ({mean('rough_pro_mm', '.2f')}) |"
+        )
+    lines.append("")
+    # Where each pass helps or hurts: a stage against the one it runs on.
+    for s, base in (("retarget", "raw"), ("clean", "retarget"), ("contact", "retarget"), ("stylize", "clean")):
+        worse, better = [], []
+        for name, c in sorted(subset.items()):
+            if s in c and base in c:
+                nb, ns = set(c[base]["fail"]), set(c[s]["fail"])
+                if ns - nb:
+                    worse.append(f"{name} (+{','.join(sorted(ns - nb))})")
+                if nb - ns:
+                    better.append(f"{name} (-{','.join(sorted(nb - ns))})")
+        if worse or better:
+            lines += [f"**{s} vs {base}**: fixes {len(better)}, breaks {len(worse)}", ""]
+            if better:
+                lines.append("- fixes: " + "; ".join(better))
+            if worse:
+                lines.append("- breaks: " + "; ".join(worse))
+            lines.append("")
+
+
 def report(out):
-    R = json.load(open(os.path.join(out, "results.json")))
+    R = _load_json(os.path.join(out, "results.json"))
+    heldout = set(R.get("heldout", DEFAULT_HELDOUT))
     L = [f"# Pro correctness bench ({R['commit']}, {R['date']})", "",
          "Each stage's clips against the professional clip they came from; correctness only.", ""]
     for target, T in R["targets"].items():
         clips = T["clips"]
-        L += [f"## {target} ({T['height_m']} m), {len(clips)} clips", "",
-              "| stage | clips | pass | " + " | ".join(CHECKS) + " | IoU (mean) | hold cm (pro) | sink fr | "
-              "through fr | limit fr | rough mm (pro) |",
-              "|" + "---|" * (len(CHECKS) + 9)]
-        for s in R["stages"]:
-            rows = [c[s] for c in clips.values() if s in c]
-            if not rows:
-                continue
-            def mean(k, fmt):
-                xs = [r[k] for r in rows if r[k] is not None]
-                return format(sum(xs) / len(xs), fmt) if xs else "-"
-            L.append(f"| {s} | {len(rows)} | {sum(1 for r in rows if not r['fail'])} | " +
-                     " | ".join(str(sum(1 for r in rows if ch in r["fail"])) for ch in CHECKS) +
-                     f" | {mean('plant_iou', '.2f')} | {mean('hold_cm', '.1f')} ({mean('hold_pro_cm', '.1f')}) | "
-                     f"{sum(r['sink_new'] for r in rows)} | {sum(r['through_new'] for r in rows)} | "
-                     f"{sum(r['limits_new'] for r in rows)} | {mean('rough_mm', '.2f')} ({mean('rough_pro_mm', '.2f')}) |")
-        L.append("")
-        # Where each pass helps or hurts: a stage against the one it runs on.
-        for s, base in (("retarget", "raw"), ("clean", "retarget"), ("contact", "retarget"), ("stylize", "clean")):
-            worse, better = [], []
-            for name, c in sorted(clips.items()):
-                if s in c and base in c:
-                    nb, ns = set(c[base]["fail"]), set(c[s]["fail"])
-                    if ns - nb:
-                        worse.append(f"{name} (+{','.join(sorted(ns - nb))})")
-                    if nb - ns:
-                        better.append(f"{name} (-{','.join(sorted(nb - ns))})")
-            if worse or better:
-                L += [f"**{s} vs {base}**: fixes {len(better)}, breaks {len(worse)}", ""]
-                if better:
-                    L.append("- fixes: " + "; ".join(better))
-                if worse:
-                    L.append("- breaks: " + "; ".join(worse))
-                L.append("")
-    open(os.path.join(out, "report.md"), "w").write("\n".join(L) + "\n")
+        L += [f"## {target} ({T['height_m']} m), {len(clips)} clips", ""]
+        dev_clips = {k: v for k, v in clips.items() if _clip_lib(k) not in heldout}
+        heldout_clips = {k: v for k, v in clips.items() if _clip_lib(k) in heldout}
+        splits = []
+        if dev_clips:
+            splits.append(("dev", dev_clips))
+        if heldout_clips:
+            splits.append(("held-out", heldout_clips))
+        if not splits:
+            _append_split_section(L, "dev", R["stages"], clips)
+        else:
+            for label, subset in splits:
+                _append_split_section(L, label, R["stages"], subset)
+    with open(os.path.join(out, "report.md"), "w") as fh:
+        fh.write("\n".join(L) + "\n")
     print("\n".join(L))
 
 
@@ -522,15 +883,21 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("calibrate")
     c.add_argument("--out")
-    c.add_argument("--libs", default="ual1,ual2")
+    c.add_argument("--libs", default=None, help="comma-separated library names (default: ual1,ual2 plus any --lib)")
+    c.add_argument("--lib", action="append", default=[], help="name=clips.glb (repeatable; merges into or overrides built-in libs)")
     r = sub.add_parser("run")
     r.add_argument("--target", action="append", default=[], help="name=rigged.glb (repeatable)")
     r.add_argument("--mannequin-f", action="store_true", help="also Quaternius' female mannequin (UAL2)")
-    r.add_argument("--libs", default="ual1,ual2")
+    r.add_argument("--libs", default=None, help="comma-separated library names (default: ual1,ual2 plus any --lib)")
+    r.add_argument("--lib", action="append", default=[], help="name=clips.glb (repeatable; merges into or overrides built-in libs)")
+    r.add_argument("--heldout", default=",".join(DEFAULT_HELDOUT),
+                   help="comma-separated held-out library names (default: mixamo)")
     r.add_argument("--clips")
     r.add_argument("--stages", default=",".join(STAGES))
     r.add_argument("--out")
     r.add_argument("--jobs", type=int, default=4)
+    pl = sub.add_parser("planted", help="verify a deliberately corrupted clip fails compare() while a clean control passes")
+    pl.add_argument("--out", help="optional directory to save generated GLBs and check JSONs")
     p = sub.add_parser("report")
     p.add_argument("dir")
     p = sub.add_parser("recompare", help="results.json again from a run's motion check JSONs, then the report")
@@ -544,12 +911,21 @@ def main():
     p.add_argument("target")
     p.add_argument("stage")
     a = ap.parse_args()
-    if a.cmd in ("calibrate", "run", "rescore") and not os.path.exists(CLI):
+    if a.cmd in ("calibrate", "run", "rescore", "planted") and not os.path.exists(_cli()):
         subprocess.run(["cargo", "build", "--locked", "--release"], cwd=os.path.join(ROOT, "rust"), check=True)
     if a.cmd == "calibrate":
         calibrate(a)
     elif a.cmd == "run":
         main_run(a)
+    elif a.cmd == "planted":
+        res = check_planted_bad(a.out)
+        status = "PASS" if res["ok"] else "FAIL"
+        print(
+            f"planted bad clip check: {status} "
+            f"(clip={res['clip']}, failed={res['failed_checks']}, "
+            f"control_failed={res['control_failed_checks']})"
+        )
+        sys.exit(0 if res["ok"] else 1)
     elif a.cmd == "recompare":
         recompare(a.dir)
         report(a.dir)
