@@ -41,6 +41,7 @@ commands:\n\
   socket         put the hand sockets in the palms (where mocap sword clips hold the handle)\n\
   attack         a sword attack authored from the sword's path (grip and tip keys), solved onto a rig\n\
   clean          fix a rigged GLB's own clips: floor offset, feet under the floor, sliding plants, arms in the body\n\
+  giant          scale a rigged GLB & clips with Froude timing, hit-stop/cancel-window metadata, and optional body mask\n\
   grip           find a weapon clip set's grip, write it into the hand socket\n\
   keypose        key-pose drawings (landmarks JSON) -> a timed attack clip on a rigged GLB\n\
   pose-test      range-of-motion poses as animations (+ rendered sheet)\n\
@@ -68,6 +69,12 @@ clean flags:\n\
   --input <rigged glb> --output <glb>  --clip <name> (repeatable; default all)\n\
   --suffix <s> (keep originals, add <name><s>)  --no-ground  --no-lock  --contact (arms out of the body)\n\
   --weapon R|L|none  --weapon-clips <a,b>  --report <json>\n\
+\n\
+giant flags:\n\
+  --input <rigged glb> --output <glb>  --scale <k> (default 4.0)  --clip <name,...> (repeatable; default all)\n\
+  --suffix <s> (keep originals, add <name><s>)  --anticipation <f> (default 0.35)  --settle <f> (default 0.35)\n\
+  --hit-stop <s> (default 0.12)  --cancel-window <s> (default 0.25)  --mask full|arms-only (default full)\n\
+  --pin-pelvis  --no-replant\n\
 \n\
 stylize flags:\n\
   --input <clip|rigged glb> --output <clip|glb>\n\
@@ -228,6 +235,7 @@ fn is_bool_flag(key: &str) -> bool {
             | "tracks"
             | "no-through"
             | "no-replant"
+            | "pin-pelvis"
             | "no-ground"
             | "no-lock"
             | "contact"
@@ -740,6 +748,7 @@ fn real_main(argv: &[String]) -> (i32, Option<String>) {
             "animate" => glb_cmds::cmd_animate(&args),
             "motion-check" => glb_cmds::cmd_motion_check(&args),
             "clean" => glb_cmds::cmd_clean(&args),
+            "giant" => glb_cmds::cmd_giant(&args),
             "attack" => glb_cmds::cmd_attack(&args),
             "socket" => glb_cmds::cmd_socket(&args),
             "grip" => glb_cmds::cmd_grip(&args),

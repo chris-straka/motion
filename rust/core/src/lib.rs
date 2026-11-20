@@ -13,6 +13,7 @@ pub mod creature;
 pub mod detmath;
 pub mod fixture;
 pub mod footpin;
+pub mod giant;
 pub mod glb;
 pub mod helpers;
 pub mod humanoid;

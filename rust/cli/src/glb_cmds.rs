@@ -1264,3 +1264,76 @@ pub fn cmd_stylize_glb(cmd: &Cmd, base: motion_core::stylize::StylizeParams) -> 
     r.push_str(&format!("output: {}\n", output));
     Ok(r)
 }
+
+/// `motionforge giant`: giant animation pass (`motion_core::giant`).
+pub fn cmd_giant(cmd: &Cmd) -> CmdResult {
+    use motion_core::giant::{giant_glb, BodyMask, GiantOptions};
+    let input = cmd.required("input")?;
+    let output = cmd.required("output")?;
+    let mask = match cmd.get("mask").unwrap_or("full") {
+        "full" => BodyMask::Full,
+        "arms-only" => BodyMask::ArmsOnly,
+        other => return Err((1, format!("--mask must be full|arms-only, got '{}'", other))),
+    };
+    let opts = GiantOptions {
+        scale: crate::parse_f64(cmd, "scale", 4.0)?,
+        anticipation: crate::parse_f64(cmd, "anticipation", 0.35)?,
+        settle: crate::parse_f64(cmd, "settle", 0.35)?,
+        hit_stop_s: crate::parse_f64(cmd, "hit-stop", 0.12)?,
+        cancel_window_s: crate::parse_f64(cmd, "cancel-window", 0.25)?,
+        mask,
+        pin_pelvis: cmd.flag("pin-pelvis"),
+        replant_feet: !cmd.flag("no-replant"),
+    };
+    if !(opts.scale.is_finite() && opts.scale > 0.0) {
+        return Err((1, "--scale must be finite and > 0".into()));
+    }
+    if opts.anticipation < 0.0
+        || opts.settle < 0.0
+        || opts.hit_stop_s < 0.0
+        || opts.cancel_window_s < 0.0
+    {
+        return Err((
+            1,
+            "--anticipation, --settle, --hit-stop, and --cancel-window must be >= 0".into(),
+        ));
+    }
+    let clips: Vec<String> = cmd
+        .all("clip")
+        .iter()
+        .flat_map(|c| c.split(','))
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+        .collect();
+    let doc = load(input)?;
+    let (out, reports) = giant_glb(&doc, &opts, &clips, cmd.get("suffix")).map_err(|e| (3, e))?;
+    save(&out, output)?;
+    let mut r = String::from("=== motionforge giant ===\n");
+    for c in &reports {
+        let mask_label = match c.mask {
+            BodyMask::Full => "full",
+            BodyMask::ArmsOnly => "arms-only",
+        };
+        r.push_str(&format!(
+            "clip {} (from {}): scale {:.2}x, {:.3}s -> {:.3}s, root travel {:.3}m -> {:.3}m, mask {}{}",
+            c.name,
+            c.source,
+            c.scale,
+            c.source_duration_s,
+            c.output_duration_s,
+            c.root_travel_before_m,
+            c.root_travel_after_m,
+            mask_label,
+            if c.pin_pelvis { " (pelvis pinned)" } else { "" }
+        ));
+        if let Some((s, e)) = c.hit_stop {
+            r.push_str(&format!(", hit_stop {:.3}..{:.3}s", s, e));
+        }
+        if let Some((s, e)) = c.cancel_window {
+            r.push_str(&format!(", cancel_window {:.3}..{:.3}s", s, e));
+        }
+        r.push('\n');
+    }
+    r.push_str(&format!("output: {}\n", output));
+    Ok(r)
+}
