@@ -121,10 +121,14 @@ pub fn cmd_standardize(cmd: &Cmd) -> CmdResult {
 
 /// Contact-pass settings from flags (on unless `--no-contact`).
 fn contact_opts(cmd: &Cmd) -> Result<Option<ContactOptions>, (i32, String)> {
+    if cmd.flag("refit-width") && cmd.flag("no-refit-width") {
+        return Err((1, "--refit-width and --no-refit-width conflict".into()));
+    }
     if cmd.flag("no-contact") {
         return Ok(None);
     }
     let mut o = ContactOptions::default();
+    o.refit_width = !cmd.flag("no-refit-width");
     if let Some(w) = cmd.get("weapon") {
         o.weapon_side = match w {
             "R" | "r" => Some("R".into()),
@@ -559,7 +563,7 @@ const ADAPTER_HELP: &str = "usage: motionforge adapter <standardize|animate|pose
 flags: --class humanoid|quadruped|custom (default humanoid)\n\
        --clips <glb|folder> (repeatable)  --fps <n> (animate, default 30)\n\
        --blender <path> (pose-test; default BLENDER_BIN, the macOS app, PATH)\n\
-       animate: --no-pin, --no-contact, --weapon R|L|none, --weapon-length, --weapon-clips\n\
+       animate: --no-pin, --no-contact, --refit-width, --no-refit-width, --weapon R|L|none, --weapon-length, --weapon-clips\n\
 \n\
 RESULT.json: {\"ok\": bool, \"outputs\": [paths relative to its folder], \"tool\": \"motionforge\", ...}\n\
 exit: 0 ok, 1 stage failed (ok false, result written), 2 error (no result)\n";

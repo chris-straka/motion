@@ -59,6 +59,8 @@ pub struct Options {
     /// against a coat is not a limb through the body, and pushing it out
     /// splayed the arm. 0 = clear every contact.
     pub min_depth: f64,
+    /// Width-first retargeting per body before contact clean-up (default on).
+    pub refit_width: bool,
 }
 
 impl Default for Options {
@@ -75,6 +77,7 @@ impl Default for Options {
             ramp: 0.15,
             margin: 0.004,
             min_depth: 0.0,
+            refit_width: true,
         }
     }
 }
@@ -127,6 +130,12 @@ fn r4(v: f64) -> f64 {
     (v * 1e4).round() / 1e4
 }
 
+const PART_UPPER: usize = 0;
+const PART_FOREARM: usize = 1;
+const PART_PALM: usize = 2;
+const PART_WEAPON: usize = 3;
+const N_ARM_PARTS: usize = 4;
+
 /// One arm: its chain and moving parts.
 #[derive(Clone, Debug)]
 pub struct Arm {
@@ -134,6 +143,7 @@ pub struct Arm {
     pub upper: usize,
     pub fore: usize,
     pub hand: usize,
+    pub upper_arm: Capsule,
     pub forearm: Capsule,
     pub palm: Capsule,
     pub weapon: Option<Capsule>,
@@ -149,6 +159,8 @@ pub struct Body {
     pub arms: Vec<Arm>,
     /// Rest-pose depth allowed per (arm index, part index, body index).
     slack: Vec<f64>,
+    /// Rest-pose arm-vs-arm depth allowed per (arm0 part, arm1 part) in 0..3 x 0..3.
+    arm_slack: Vec<f64>,
     inv_rest: Vec<Affine>,
     /// Body surface points (torso, head, thighs) in their bone's rest
     /// frame: (bone, position, normal). They catch shallow contacts the
@@ -576,6 +588,32 @@ impl Body {
                 });
             }
         }
+        // Shins.
+        for side in ["L", "R"] {
+            let (Some(sh), Some(ft)) = (
+                map.node_of(&format!("DEF-shin.{side}")),
+                head_of(&format!("DEF-foot.{side}")),
+            ) else {
+                continue;
+            };
+            let a = rig.head(sh);
+            let set: Vec<Vec3> = verts
+                .iter()
+                .zip(&dom)
+                .filter(|(_, &d)| d == sh)
+                .map(|(v, _)| v.p)
+                .collect();
+            let r = radial(&set, a, ft, 0.5);
+            if r > 0.0 {
+                parts.push(Capsule {
+                    name: format!("shin.{side}"),
+                    bone: sh,
+                    a: to_local(sh, a + (ft - a).scale(0.1)),
+                    b: to_local(sh, ft),
+                    r: r * 0.9,
+                });
+            }
+        }
         if parts.is_empty() {
             return Ok(None);
         }
@@ -589,7 +627,21 @@ impl Body {
             ) else {
                 continue;
             };
-            let (e, w) = (rig.head(fo), rig.head(ha));
+            let (s_pos, e, w) = (rig.head(up_n), rig.head(fo), rig.head(ha));
+            let uset: Vec<Vec3> = verts
+                .iter()
+                .zip(&dom)
+                .filter(|(_, &d)| d == up_n)
+                .map(|(v, _)| v.p)
+                .collect();
+            let ru = radial(&uset, s_pos, e, 0.5).max(0.01 * height);
+            let upper_arm = Capsule {
+                name: format!("upper_arm.{side}"),
+                bone: up_n,
+                a: to_local(up_n, s_pos + (e - s_pos).scale(0.25)),
+                b: to_local(up_n, e),
+                r: ru * 0.85,
+            };
             let fset: Vec<Vec3> = verts
                 .iter()
                 .zip(&dom)
@@ -641,6 +693,7 @@ impl Body {
                 upper: up_n,
                 fore: fo,
                 hand: ha,
+                upper_arm,
                 forearm,
                 palm,
                 weapon,
@@ -725,6 +778,7 @@ impl Body {
             static_parts: parts,
             arms,
             slack: Vec::new(),
+            arm_slack: Vec::new(),
             inv_rest,
             surface,
             surf_bones,
@@ -743,23 +797,35 @@ impl Body {
         // Rest-pose slack.
         let world = rig.world(&vec![None; rig.names.len()]);
         let nb = body.static_parts.len();
-        let mut slack = vec![0.0; body.arms.len() * 3 * nb];
+        let mut slack = vec![0.0; body.arms.len() * N_ARM_PARTS * nb];
         for (ai, arm) in body.arms.iter().enumerate() {
             for (pi, part) in arm.parts(true).iter().enumerate() {
                 for (bi, s) in body.static_parts.iter().enumerate() {
                     let d = depth(part, s, &body.inv_rest, &world, 0.0).0;
-                    slack[(ai * 3 + pi) * nb + bi] = d.max(0.0);
+                    slack[(ai * N_ARM_PARTS + pi) * nb + bi] = d.max(0.0);
                 }
             }
         }
         body.slack = slack;
+        if body.arms.len() >= 2 {
+            let mut arm_slack = vec![0.0; 9];
+            let p0s = body.arms[0].body_parts();
+            let p1s = body.arms[1].body_parts();
+            for (i0, c0) in p0s.iter().enumerate() {
+                for (i1, c1) in p1s.iter().enumerate() {
+                    let d = depth(c0, c1, &body.inv_rest, &world, 0.0).0;
+                    arm_slack[i0 * 3 + i1] = d.max(0.0);
+                }
+            }
+            body.arm_slack = arm_slack;
+        }
         let nsb = body.surf_bones.len();
-        let mut ss: Vec<f64> = vec![0.0; body.arms.len() * 3 * nsb];
+        let mut ss: Vec<f64> = vec![0.0; body.arms.len() * N_ARM_PARTS * nsb];
         let posed = body.posed_surface(&world);
         for (ai, arm) in body.arms.iter().enumerate() {
             for (pi, part) in arm.parts(true).iter().enumerate() {
                 for (k, d, _) in surface_hits(part, &posed, &body.inv_rest, &world, 0.0) {
-                    let slot = (ai * 3 + pi) * nsb
+                    let slot = (ai * N_ARM_PARTS + pi) * nsb
                         + body
                             .surf_bones
                             .iter()
@@ -1220,13 +1286,17 @@ fn surface_hits(
 
 impl Arm {
     fn parts(&self, weapon: bool) -> Vec<&Capsule> {
-        let mut v = vec![&self.forearm, &self.palm];
+        let mut v = vec![&self.upper_arm, &self.forearm, &self.palm];
         if weapon {
             if let Some(w) = &self.weapon {
                 v.push(w);
             }
         }
         v
+    }
+
+    fn body_parts(&self) -> [&Capsule; 3] {
+        [&self.upper_arm, &self.forearm, &self.palm]
     }
 }
 
@@ -1499,6 +1569,208 @@ fn depth(
     (part.r + body.r - d - slack, n.normalized(), s)
 }
 
+/// Tolerance (metres) above source-body penetration before a target contact is
+/// treated as worsened by the target body's extra width (absorbs float32 GLB
+/// and retarget rounding on same-width targets).
+const SRC_EXCESS_TOL: f64 = 0.001;
+
+/// Per-frame penetration slack measured on the source body (scaled to the
+/// target's height) so faults already present on the source body itself are
+/// left untouched when the target body does not worsen them.
+struct SourceSlack {
+    cap_raw: Vec<Vec<f64>>,
+    cap_margin: Vec<Vec<f64>>,
+    surf_raw: Vec<Vec<f64>>,
+    surf_margin: Vec<Vec<f64>>,
+    arm_raw: Vec<Vec<f64>>,
+    arm_margin: Vec<Vec<f64>>,
+}
+
+impl SourceSlack {
+    #[allow(clippy::too_many_arguments)]
+    fn build(
+        tgt_body: &Body,
+        tgt_rig: &Rig,
+        tgt_frames: &[Vec<Option<Trs>>],
+        src_body: &Body,
+        src_rig: &Rig,
+        src_frames: &[Vec<Option<Trs>>],
+        weapon: bool,
+        opts: &Options,
+    ) -> SourceSlack {
+        let n = src_frames.len();
+        let nb = tgt_body.static_parts.len();
+        let nsb = tgt_body.surf_bones.len();
+        let na = tgt_body.arms.len();
+        let scale = tgt_body.height / src_body.height.max(1e-6);
+        let src_margin = opts.margin * src_body.height;
+
+        let arm_map: Vec<Option<usize>> = tgt_body
+            .arms
+            .iter()
+            .map(|ta| src_body.arms.iter().position(|sa| sa.side == ta.side))
+            .collect();
+        let sp = &src_body.static_parts;
+        let static_map: Vec<Option<usize>> = tgt_body
+            .static_parts
+            .iter()
+            .map(|ts| sp.iter().position(|ss| ss.name == ts.name))
+            .collect();
+
+        let tgt_map = humanoid::map_rig(tgt_rig);
+        let src_map = humanoid::map_rig(src_rig);
+        let src_surf_to_tgt: Vec<Option<usize>> = src_body
+            .surface
+            .iter()
+            .map(|(sb, _, _)| {
+                let cname = src_map.canonical_of(*sb).unwrap_or(&src_rig.names[*sb]);
+                tgt_body.surf_bones.iter().position(|&tb| {
+                    let tname = tgt_map.canonical_of(tb).unwrap_or(&tgt_rig.names[tb]);
+                    tname == cname
+                })
+            })
+            .collect();
+        let tgt_surf_slot: Vec<usize> = tgt_body
+            .surface
+            .iter()
+            .map(|(tb, _, _)| {
+                tgt_body
+                    .surf_bones
+                    .iter()
+                    .position(|&b| b == *tb)
+                    .unwrap_or(0)
+            })
+            .collect();
+
+        let mut cap_raw = Vec::with_capacity(n);
+        let mut cap_margin = Vec::with_capacity(n);
+        let mut surf_raw = Vec::with_capacity(n);
+        let mut surf_margin = Vec::with_capacity(n);
+        let mut arm_raw = Vec::with_capacity(n);
+        let mut arm_margin = Vec::with_capacity(n);
+
+        for (fi, sf) in src_frames.iter().enumerate() {
+            let sw = src_rig.world(sf);
+            let tw = tgt_rig.world(&tgt_frames[fi]);
+            let src_posed = src_body.posed_surface(&sw);
+            let tgt_posed = tgt_body.posed_surface(&tw);
+            let mut cr = vec![0.0f64; na * N_ARM_PARTS * nb];
+            let mut cm = vec![0.0f64; na * N_ARM_PARTS * nb];
+            let mut sr = vec![0.0f64; na * N_ARM_PARTS * nsb];
+            let mut sm = vec![0.0f64; na * N_ARM_PARTS * nsb];
+
+            for (ai, &src_ai_opt) in arm_map.iter().enumerate() {
+                let Some(src_ai) = src_ai_opt else {
+                    continue;
+                };
+                let s_arm = &src_body.arms[src_ai];
+                let t_arm = &tgt_body.arms[ai];
+                let s_use_w = weapon && s_arm.weapon.is_some();
+                let t_use_w = weapon && t_arm.weapon.is_some();
+                let s_parts = s_arm.parts(s_use_w);
+                let t_parts = t_arm.parts(t_use_w);
+                for (pi, part) in s_parts.iter().enumerate() {
+                    let t_part = t_parts.get(pi).copied();
+                    for (bi, &src_bi_opt) in static_map.iter().enumerate() {
+                        let Some(src_bi) = src_bi_opt else {
+                            continue;
+                        };
+                        let ss = &src_body.static_parts[src_bi];
+                        let ts = &tgt_body.static_parts[bi];
+                        let raw_d = depth(part, ss, &src_body.inv_rest, &sw, 0.0).0;
+                        let s_raw = raw_d.max(0.0) * scale;
+                        let s_mar = (raw_d + src_margin).max(0.0) * scale;
+                        let t_raw = t_part
+                            .map(|tp| depth(tp, ts, &tgt_body.inv_rest, &tw, 0.0).0.max(0.0))
+                            .unwrap_or(0.0);
+                        let idx = (ai * N_ARM_PARTS + pi) * nb + bi;
+                        if s_raw > 0.0 && t_raw <= s_raw + SRC_EXCESS_TOL {
+                            cr[idx] = s_raw;
+                            cm[idx] = s_mar;
+                        } else if s_raw == 0.0 && t_raw <= SRC_EXCESS_TOL {
+                            cm[idx] = s_mar;
+                        }
+                    }
+                    let mut s_sr = vec![0.0f64; nsb];
+                    let mut s_sm = vec![0.0f64; nsb];
+                    let sh = surface_hits(part, &src_posed, &src_body.inv_rest, &sw, src_margin);
+                    for (k, d, _) in sh {
+                        let Some(tslot) = src_surf_to_tgt[k] else {
+                            continue;
+                        };
+                        s_sm[tslot] = s_sm[tslot].max(d * scale);
+                        s_sr[tslot] = s_sr[tslot].max((d - src_margin).max(0.0) * scale);
+                    }
+                    let mut t_sr = vec![0.0f64; nsb];
+                    if s_sm.iter().any(|&v| v > 0.0) {
+                        if let Some(tp) = t_part {
+                            for (k, d, _) in
+                                surface_hits(tp, &tgt_posed, &tgt_body.inv_rest, &tw, 0.0)
+                            {
+                                let tslot = tgt_surf_slot[k];
+                                t_sr[tslot] = t_sr[tslot].max(d);
+                            }
+                        }
+                    }
+                    for tslot in 0..nsb {
+                        let idx = (ai * N_ARM_PARTS + pi) * nsb + tslot;
+                        if s_sr[tslot] > 0.0 && t_sr[tslot] <= s_sr[tslot] + SRC_EXCESS_TOL {
+                            sr[idx] = s_sr[tslot];
+                            sm[idx] = s_sm[tslot];
+                        } else if s_sr[tslot] == 0.0 && t_sr[tslot] <= SRC_EXCESS_TOL {
+                            sm[idx] = s_sm[tslot];
+                        }
+                    }
+                }
+            }
+
+            let mut ar = vec![0.0f64; 9];
+            let mut am = vec![0.0f64; 9];
+            if na >= 2 {
+                if let (Some(sa0), Some(sa1)) = (arm_map[0], arm_map[1]) {
+                    let p0s = src_body.arms[sa0].body_parts();
+                    let p1s = src_body.arms[sa1].body_parts();
+                    let tp0s = tgt_body.arms[0].body_parts();
+                    let tp1s = tgt_body.arms[1].body_parts();
+                    for (i0, c0) in p0s.iter().enumerate() {
+                        for (i1, c1) in p1s.iter().enumerate() {
+                            let raw_d = depth(c0, c1, &src_body.inv_rest, &sw, 0.0).0;
+                            let s_raw = raw_d.max(0.0) * scale;
+                            let s_mar = (raw_d + src_margin).max(0.0) * scale;
+                            let t_raw = depth(tp0s[i0], tp1s[i1], &tgt_body.inv_rest, &tw, 0.0)
+                                .0
+                                .max(0.0);
+                            let idx = i0 * 3 + i1;
+                            if s_raw > 0.0 && t_raw <= s_raw + SRC_EXCESS_TOL {
+                                ar[idx] = s_raw;
+                                am[idx] = s_mar;
+                            } else if s_raw == 0.0 && t_raw <= SRC_EXCESS_TOL {
+                                am[idx] = s_mar;
+                            }
+                        }
+                    }
+                }
+            }
+
+            cap_raw.push(cr);
+            cap_margin.push(cm);
+            surf_raw.push(sr);
+            surf_margin.push(sm);
+            arm_raw.push(ar);
+            arm_margin.push(am);
+        }
+
+        SourceSlack {
+            cap_raw,
+            cap_margin,
+            surf_raw,
+            surf_margin,
+            arm_raw,
+            arm_margin,
+        }
+    }
+}
+
 /// One contact found in a frame.
 #[derive(Clone, Copy, Debug)]
 struct Hit {
@@ -1513,20 +1785,80 @@ struct Hit {
     point: Vec3,
 }
 
-fn hits(body: &Body, ai: usize, world: &[Affine], weapon: bool, margin: f64) -> Vec<Hit> {
+fn reach_of(pi: usize, at: f64) -> f64 {
+    match pi {
+        PART_UPPER => ((0.25 + 0.75 * at) * 0.5).max(0.35),
+        PART_FOREARM => (0.2 + 0.8 * at).max(0.35),
+        PART_PALM | PART_WEAPON => 1.0,
+        _ => 1.0,
+    }
+}
+
+fn effective_capsule_slack(r: f64, src_raw: f64, src_margin: f64, margin: f64) -> f64 {
+    if margin <= 0.0 {
+        let sl = r.max(src_raw);
+        let eps = if src_raw > 0.0 { 1e-4 } else { 0.0 };
+        if sl > 0.0 {
+            sl + eps
+        } else {
+            0.0
+        }
+    } else {
+        let rest_m = if r > 0.0 { r + margin } else { 0.0 };
+        let m_sl = rest_m.max(src_margin);
+        let eps = if src_margin > 0.0 { 1e-4 } else { 0.0 };
+        if m_sl > 0.0 {
+            m_sl - margin + eps
+        } else {
+            -margin
+        }
+    }
+}
+
+fn eff_surf_depth(d: f64, r: f64, src_raw: f64, src_margin: f64, margin: f64) -> f64 {
+    if margin <= 0.0 {
+        let sl = r.max(src_raw);
+        let eps = if src_raw > 0.0 { 1e-4 } else { 0.0 };
+        if sl > 0.0 {
+            d - sl - eps
+        } else {
+            d
+        }
+    } else {
+        let rest_m = if r > 0.0 { r + margin } else { 0.0 };
+        let m_sl = rest_m.max(src_margin);
+        let eps = if src_margin > 0.0 { 1e-4 } else { 0.0 };
+        if m_sl > 0.0 {
+            d - m_sl - eps
+        } else {
+            d
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hits_with_slack(
+    body: &Body,
+    ai: usize,
+    world: &[Affine],
+    weapon: bool,
+    margin: f64,
+    src_cap_raw: Option<&[f64]>,
+    src_cap_margin: Option<&[f64]>,
+    src_surf_raw: Option<&[f64]>,
+    src_surf_margin: Option<&[f64]>,
+) -> Vec<Hit> {
     let arm = &body.arms[ai];
     let nb = body.static_parts.len();
     let mut out = Vec::new();
     let posed = body.posed_surface(world);
     let nsb = body.surf_bones.len();
     for (pi, part) in arm.parts(weapon).iter().enumerate() {
-        let reach_of = |at: f64| {
-            if pi == 0 {
-                (0.2 + 0.8 * at).max(0.35)
-            } else {
-                1.0
-            }
-        };
+        // Upper arm is anchored at the fixed shoulder socket: tested in
+        // arm-vs-arm, not against its own adjacent torso/armpit.
+        if pi == PART_UPPER {
+            continue;
+        }
         let (pa, pb) = part.posed(&body.inv_rest, world);
         // Deepest surface point per body bone.
         let mut best: Vec<Option<(f64, Vec3, usize)>> = vec![None; nsb];
@@ -1536,10 +1868,10 @@ fn hits(body: &Body, ai: usize, world: &[Affine], weapon: bool, margin: f64) -> 
                 .iter()
                 .position(|&b| b == body.surface[k].0)
                 .unwrap();
-            let sl = body.surf_slack[(ai * 3 + pi) * nsb + slot];
-            // Pairs that touch at rest keep their rest depth and get no
-            // extra clearance (the margin would push them off every frame).
-            let d = if sl > 0.0 { d - margin - sl } else { d };
+            let idx = (ai * N_ARM_PARTS + pi) * nsb + slot;
+            let sr = src_surf_raw.map(|v| v[idx]).unwrap_or(0.0);
+            let sm = src_surf_margin.map(|v| v[idx]).unwrap_or(0.0);
+            let d = eff_surf_depth(d, body.surf_slack[idx], sr, sm, margin);
             if d > 0.0 && best[slot].is_none_or(|x| d > x.0) {
                 best[slot] = Some((d, n, k));
             }
@@ -1552,7 +1884,7 @@ fn hits(body: &Body, ai: usize, world: &[Affine], weapon: bool, margin: f64) -> 
                 out.push(Hit {
                     depth: d,
                     normal: n,
-                    reach: reach_of(at),
+                    reach: reach_of(pi, at),
                     part: pi,
                     body: nb + slot,
                     point: pa + ab.scale(at),
@@ -1561,26 +1893,21 @@ fn hits(body: &Body, ai: usize, world: &[Affine], weapon: bool, margin: f64) -> 
         }
     }
     for (pi, part) in arm.parts(weapon).iter().enumerate() {
+        if pi == PART_UPPER {
+            continue;
+        }
         for (bi, s) in body.static_parts.iter().enumerate() {
-            let slack = body.slack[(ai * 3 + pi) * nb + bi];
-            let (d, n, at) = depth(
-                part,
-                s,
-                &body.inv_rest,
-                world,
-                if slack > 0.0 { slack } else { -margin },
-            );
+            let idx = (ai * N_ARM_PARTS + pi) * nb + bi;
+            let sr = src_cap_raw.map(|v| v[idx]).unwrap_or(0.0);
+            let sm = src_cap_margin.map(|v| v[idx]).unwrap_or(0.0);
+            let eff_slack = effective_capsule_slack(body.slack[idx], sr, sm, margin);
+            let (d, n, at) = depth(part, s, &body.inv_rest, world, eff_slack);
             if d > 0.0 {
-                let reach = if pi == 0 {
-                    (0.2 + 0.8 * at).max(0.35)
-                } else {
-                    1.0
-                };
                 let (pa, pb) = part.posed(&body.inv_rest, world);
                 out.push(Hit {
                     depth: d,
                     normal: n,
-                    reach,
+                    reach: reach_of(pi, at),
                     part: pi,
                     body: bi,
                     point: pa + (pb - pa).scale(at),
@@ -1589,6 +1916,64 @@ fn hits(body: &Body, ai: usize, world: &[Affine], weapon: bool, margin: f64) -> 
         }
     }
     out
+}
+
+/// Deepest arm-against-arm contact in one frame.
+#[derive(Clone, Copy, Debug)]
+struct ArmArmHit {
+    depth: f64,
+    /// Unit normal pointing from arm 1's capsule toward arm 0's capsule.
+    normal: Vec3,
+    reach0: f64,
+    reach1: f64,
+}
+
+fn arm_arm_hit(
+    body: &Body,
+    world: &[Affine],
+    margin: f64,
+    src_raw: Option<&[f64]>,
+    src_margin: Option<&[f64]>,
+) -> Option<ArmArmHit> {
+    if body.arms.len() < 2 {
+        return None;
+    }
+    let p0s = body.arms[0].body_parts();
+    let p1s = body.arms[1].body_parts();
+    let mut best: Option<ArmArmHit> = None;
+    for (i0, c0) in p0s.iter().enumerate() {
+        let (a0, b0) = c0.posed(&body.inv_rest, world);
+        for (i1, c1) in p1s.iter().enumerate() {
+            let (a1, b1) = c1.posed(&body.inv_rest, world);
+            let (s0, s1, dist) = seg_seg(a0, b0, a1, b1);
+            let idx = i0 * 3 + i1;
+            let rest_sl = body.arm_slack.get(idx).copied().unwrap_or(0.0);
+            let sr = src_raw.map(|v| v[idx]).unwrap_or(0.0);
+            let sm = src_margin.map(|v| v[idx]).unwrap_or(0.0);
+            let eff_slack = effective_capsule_slack(rest_sl, sr, sm, margin);
+            let d = c0.r + c1.r - dist - eff_slack;
+            if d > 0.0 && best.is_none_or(|b| d > b.depth) {
+                let pt0 = a0 + (b0 - a0).scale(s0);
+                let pt1 = a1 + (b1 - a1).scale(s1);
+                let mut n = pt0 - pt1;
+                if n.length() < 1e-9 {
+                    let cr = (b0 - a0).cross(b1 - a1);
+                    n = if cr.length() > 1e-9 {
+                        cr
+                    } else {
+                        Vec3::new(0.0, 0.0, 1.0)
+                    };
+                }
+                best = Some(ArmArmHit {
+                    depth: d,
+                    normal: n.normalized(),
+                    reach0: reach_of(i0, s0),
+                    reach1: reach_of(i1, s1),
+                });
+            }
+        }
+    }
+    best
 }
 
 /// Two-bone IK on one arm: move the wrist to `target`, keep the shoulder,
@@ -1857,20 +2242,31 @@ fn smoothstep(x: f64) -> f64 {
     x * x * (3.0 - 2.0 * x)
 }
 
-fn measure(
+fn measure_with_slack(
     body: &Body,
     ai: usize,
     rig: &Rig,
     frames: &[Vec<Option<Trs>>],
     weapon: bool,
+    src_slack: Option<&SourceSlack>,
 ) -> (usize, f64, Vec<String>) {
     let mut count = 0;
     let mut worst: f64 = 0.0;
     let mut names: Vec<String> = Vec::new();
     let arm = &body.arms[ai];
-    for f in frames {
+    for (fi, f) in frames.iter().enumerate() {
         let world = rig.world(f);
-        let hs = hits(body, ai, &world, weapon, 0.0);
+        let hs = hits_with_slack(
+            body,
+            ai,
+            &world,
+            weapon,
+            0.0,
+            src_slack.map(|s| s.cap_raw[fi].as_slice()),
+            src_slack.map(|s| s.cap_margin[fi].as_slice()),
+            src_slack.map(|s| s.surf_raw[fi].as_slice()),
+            src_slack.map(|s| s.surf_margin[fi].as_slice()),
+        );
         if !hs.is_empty() {
             count += 1;
         }
@@ -1892,6 +2288,16 @@ fn measure(
     }
     names.sort();
     (count, worst, names)
+}
+
+fn measure(
+    body: &Body,
+    ai: usize,
+    rig: &Rig,
+    frames: &[Vec<Option<Trs>>],
+    weapon: bool,
+) -> (usize, f64, Vec<String>) {
+    measure_with_slack(body, ai, rig, frames, weapon, None)
 }
 
 /// Read-only contact check of one arm over a clip (no fix): what
@@ -1973,24 +2379,83 @@ pub fn dump_posed(body: &Body, rig: &Rig, frames: &[Vec<Option<Trs>>], weapon: b
     )
 }
 
-/// Exact (mesh) contact over a clip for one arm: frames with an arm
-/// vertex or blade point inside the body beyond rest, and the deepest.
-fn mesh_measure(
+/// Measure exact (mesh) contact over a clip for one arm on the initial frames
+/// and compute per-frame source-body mesh slack (0.0 when target deepened the
+/// penetration beyond the source body's own fault).
+fn mesh_measure_initial(
     body: &Body,
     ai: usize,
     rig: &Rig,
     frames: &[Vec<Option<Trs>>],
     weapon: bool,
+    source: Option<(&Body, &Rig, &[Vec<Option<Trs>>])>,
+) -> (Vec<bool>, f64, usize, Vec<f64>) {
+    let arm = &body.arms[ai];
+    let w = if weapon { arm.weapon.as_ref() } else { None };
+    let mut at = 0;
+    let rest_slack = body.mesh_slack.get(ai).copied().unwrap_or(0.0);
+    let src_info = source.and_then(|(sb, srig, sfr)| {
+        if sfr.len() != frames.len() {
+            return None;
+        }
+        let sai = sb.arms.iter().position(|a| a.side == arm.side)?;
+        let sw = if weapon {
+            sb.arms[sai].weapon.as_ref()
+        } else {
+            None
+        };
+        let scale = body.height / sb.height.max(1e-6);
+        Some((sb, srig, sfr, sai, sw, scale))
+    });
+    let mut inside = Vec::with_capacity(frames.len());
+    let mut frame_slack = vec![0.0f64; frames.len()];
+    let mut worst: f64 = 0.0;
+    for (fi, f) in frames.iter().enumerate() {
+        let world = rig.world(f);
+        let (d, n) = body.mesh_depth(rig, &world, ai, w);
+        let mut slack = rest_slack;
+        if n > 0 && d > slack + 0.002 * body.height {
+            if let Some((sb, srig, sfr, sai, sw, scale)) = src_info {
+                let s_world = srig.world(&sfr[fi]);
+                let (sd, sn) = sb.mesh_depth(srig, &s_world, sai, sw);
+                if sn > 0 && d <= sd * scale + SRC_EXCESS_TOL {
+                    let s_sl = sd * scale + 1e-4;
+                    frame_slack[fi] = s_sl;
+                    slack = slack.max(s_sl);
+                }
+            }
+        }
+        let deep = n > 0 && d > slack + 0.002 * body.height;
+        if deep && d - slack > worst {
+            worst = d - slack;
+            at = inside.len();
+        }
+        inside.push(deep);
+    }
+    (inside, worst, at, frame_slack)
+}
+
+/// Exact (mesh) contact over a clip for one arm using precomputed per-frame
+/// source mesh slack.
+fn mesh_measure_with_slack(
+    body: &Body,
+    ai: usize,
+    rig: &Rig,
+    frames: &[Vec<Option<Trs>>],
+    weapon: bool,
+    frame_slack: Option<&[f64]>,
 ) -> (Vec<bool>, f64, usize) {
     let arm = &body.arms[ai];
     let w = if weapon { arm.weapon.as_ref() } else { None };
     let mut at = 0;
-    let slack = body.mesh_slack.get(ai).copied().unwrap_or(0.0);
+    let rest_slack = body.mesh_slack.get(ai).copied().unwrap_or(0.0);
     let mut inside = Vec::with_capacity(frames.len());
     let mut worst: f64 = 0.0;
-    for f in frames {
+    for (fi, f) in frames.iter().enumerate() {
         let world = rig.world(f);
         let (d, n) = body.mesh_depth(rig, &world, ai, w);
+        let extra_sl = frame_slack.and_then(|s| s.get(fi).copied()).unwrap_or(0.0);
+        let slack = rest_slack.max(extra_sl);
         let deep = n > 0 && d > slack + 0.002 * body.height;
         if deep && d - slack > worst {
             worst = d - slack;
@@ -1999,6 +2464,16 @@ fn mesh_measure(
         inside.push(deep);
     }
     (inside, worst, at)
+}
+
+fn mesh_measure(
+    body: &Body,
+    ai: usize,
+    rig: &Rig,
+    frames: &[Vec<Option<Trs>>],
+    weapon: bool,
+) -> (Vec<bool>, f64, usize) {
+    mesh_measure_with_slack(body, ai, rig, frames, weapon, None)
 }
 
 /// One fix attempt on one arm with the arm proxies grown by `grow`
@@ -2014,6 +2489,7 @@ fn fix_arm(
     margin: f64,
     ramp: f64,
     grow: f64,
+    src_slack: Option<&SourceSlack>,
 ) -> (Vec<Vec<Option<Trs>>>, Vec<Vec3>, Vec<Vec3>) {
     let mut grown = body.clone();
     {
@@ -2047,7 +2523,17 @@ fn fix_arm(
             let base = wrist0[f] + offset[f];
             for _ in 0..12 {
                 let world = rig.world(&locals);
-                let hs = hits(body, ai, &world, use_weapon, margin);
+                let hs = hits_with_slack(
+                    body,
+                    ai,
+                    &world,
+                    use_weapon,
+                    margin,
+                    src_slack.map(|s| s.cap_raw[f].as_slice()),
+                    src_slack.map(|s| s.cap_margin[f].as_slice()),
+                    src_slack.map(|s| s.surf_raw[f].as_slice()),
+                    src_slack.map(|s| s.surf_margin[f].as_slice()),
+                );
                 let Some(h) = hs.iter().max_by(|a, b| {
                     (a.depth / a.reach)
                         .partial_cmp(&(b.depth / b.reach))
@@ -2057,7 +2543,7 @@ fn fix_arm(
                 };
                 let wrist = world[arm.hand].t;
                 let lever = h.point - wrist;
-                if h.part == 2 && lever.length() > 1e-6 && turn.length() < max_turn {
+                if h.part == PART_WEAPON && lever.length() > 1e-6 && turn.length() < max_turn {
                     // Blade: swing it clear about the wrist.
                     let axis = lever.cross(h.normal);
                     if axis.length() > 1e-9 {
@@ -2225,6 +2711,273 @@ fn envelope(need: &[Vec3], times: &[f64], ramp: f64) -> Vec<Vec3> {
 /// deepest residual, blade turns.
 type Attempt = (Vec<Vec<Option<Trs>>>, Vec<Vec3>, usize, f64, Vec<Vec3>);
 
+fn clamp_vec(v: Vec3, max_len: f64) -> Vec3 {
+    let l = v.length();
+    if l > max_len && l > 1e-12 {
+        v.scale(max_len / l)
+    } else {
+        v
+    }
+}
+
+/// Arm-against-arm separation pass: pushes colliding arms apart (half each
+/// when both are free, or free arm first when one holds a weapon), while
+/// avoiding driving either arm back into static body proxies.
+#[allow(clippy::too_many_arguments)]
+fn fix_arm_vs_arm(
+    body: &Body,
+    rig: &Rig,
+    frames: &mut [Vec<Option<Trs>>],
+    times: &[f64],
+    weapon: bool,
+    opts: &Options,
+    src_slack: Option<&SourceSlack>,
+    report: &mut ClipContact,
+    mesh_slacks: &[Vec<f64>],
+) {
+    let margin = opts.margin * body.height;
+    let ramp = opts.ramp;
+    if body.arms.len() < 2 || frames.is_empty() {
+        return;
+    }
+    let n = frames.len();
+    let has_hit = (0..n).any(|f| {
+        let world = rig.world(&frames[f]);
+        arm_arm_hit(
+            body,
+            &world,
+            0.0,
+            src_slack.map(|s| s.arm_raw[f].as_slice()),
+            src_slack.map(|s| s.arm_margin[f].as_slice()),
+        )
+        .is_some()
+    });
+    if !has_hit {
+        return;
+    }
+
+    let use_w = [
+        weapon && body.arms[0].weapon.is_some(),
+        weapon && body.arms[1].weapon.is_some(),
+    ];
+    let base_frames: Vec<Vec<Option<Trs>>> = frames.to_vec();
+    let wrist0: [Vec<Vec3>; 2] = [
+        base_frames
+            .iter()
+            .map(|f| rig.world(f)[body.arms[0].hand].t)
+            .collect(),
+        base_frames
+            .iter()
+            .map(|f| rig.world(f)[body.arms[1].hand].t)
+            .collect(),
+    ];
+    let mut offset = [vec![Vec3::ZERO; n], vec![Vec3::ZERO; n]];
+    let max_shift = 0.12 * body.height;
+
+    let apply_arm = |loc: &mut [Option<Trs>], ai: usize, target: Vec3, hand: Option<Trs>| {
+        let arm = &body.arms[ai];
+        solve_arm(rig, loc, arm.upper, arm.fore, arm.hand, target);
+        if !use_w[ai] {
+            loc[arm.hand] = hand;
+        }
+    };
+
+    for _round in 0..3 {
+        let mut need = [vec![Vec3::ZERO; n], vec![Vec3::ZERO; n]];
+        let mut any = false;
+        for f in 0..n {
+            let mut locals = frames[f].clone();
+            let mut extra = [Vec3::ZERO; 2];
+            let base = [wrist0[0][f] + offset[0][f], wrist0[1][f] + offset[1][f]];
+            let mut free_blocked = false;
+            for _ in 0..16 {
+                let world = rig.world(&locals);
+                let Some(h) = arm_arm_hit(
+                    body,
+                    &world,
+                    margin,
+                    src_slack.map(|s| s.arm_raw[f].as_slice()),
+                    src_slack.map(|s| s.arm_margin[f].as_slice()),
+                ) else {
+                    break;
+                };
+                let sep = h.depth + 0.5 * margin;
+                if use_w[0] != use_w[1] {
+                    let free = if !use_w[0] { 0 } else { 1 };
+                    let wep = 1 - free;
+                    let free_dir = if free == 0 {
+                        h.normal
+                    } else {
+                        h.normal.scale(-1.0)
+                    };
+                    let reach_free = if free == 0 { h.reach0 } else { h.reach1 };
+                    let reach_wep = if wep == 0 { h.reach0 } else { h.reach1 };
+                    if !free_blocked {
+                        let prev = extra[free];
+                        let want = clamp_vec(prev + free_dir.scale(sep / reach_free), max_shift);
+                        let achieved = (want - prev).dot(free_dir) * reach_free;
+                        extra[free] = want;
+                        let rem = (sep - achieved).max(0.0);
+                        if rem > 1e-4 {
+                            free_blocked = true;
+                            let step = free_dir.scale(-rem / reach_wep);
+                            extra[wep] = clamp_vec(extra[wep] + step, max_shift);
+                        }
+                    } else {
+                        let step = free_dir.scale(-sep / reach_wep);
+                        extra[wep] = clamp_vec(extra[wep] + step, max_shift);
+                    }
+                } else {
+                    let prev0 = extra[0];
+                    let prev1 = extra[1];
+                    let want0 = clamp_vec(prev0 + h.normal.scale(0.5 * sep / h.reach0), max_shift);
+                    let want1 = clamp_vec(prev1 + h.normal.scale(-0.5 * sep / h.reach1), max_shift);
+                    let ach0 = (want0 - prev0).dot(h.normal) * h.reach0;
+                    let ach1 = (want1 - prev1).dot(h.normal.scale(-1.0)) * h.reach1;
+                    extra[0] = want0;
+                    extra[1] = want1;
+                    let rem0 = (0.5 * sep - ach0).max(0.0);
+                    let rem1 = (0.5 * sep - ach1).max(0.0);
+                    if rem0 > 1e-4 {
+                        let step1 = h.normal.scale(-rem0 / h.reach1);
+                        extra[1] = clamp_vec(extra[1] + step1, max_shift);
+                    }
+                    if rem1 > 1e-4 {
+                        let step0 = h.normal.scale(rem1 / h.reach0);
+                        extra[0] = clamp_vec(extra[0] + step0, max_shift);
+                    }
+                }
+                locals = frames[f].clone();
+                for ai in 0..2 {
+                    if extra[ai].length() > 0.0 {
+                        apply_arm(
+                            &mut locals,
+                            ai,
+                            base[ai] + extra[ai],
+                            base_frames[f][body.arms[ai].hand],
+                        );
+                    }
+                }
+                // Keep moved arms out of static body parts.
+                let world2 = rig.world(&locals);
+                for ai in 0..2 {
+                    if extra[ai].length() <= 0.0 {
+                        continue;
+                    }
+                    let hs = hits_with_slack(
+                        body,
+                        ai,
+                        &world2,
+                        use_w[ai],
+                        margin,
+                        src_slack.map(|s| s.cap_raw[f].as_slice()),
+                        src_slack.map(|s| s.cap_margin[f].as_slice()),
+                        src_slack.map(|s| s.surf_raw[f].as_slice()),
+                        src_slack.map(|s| s.surf_margin[f].as_slice()),
+                    );
+                    if let Some(st) = hs.iter().max_by(|a, b| {
+                        (a.depth / a.reach)
+                            .partial_cmp(&(b.depth / b.reach))
+                            .unwrap_or(std::cmp::Ordering::Equal)
+                    }) {
+                        let step = st.normal.scale((st.depth + 0.5 * margin) / st.reach);
+                        extra[ai] = clamp_vec(extra[ai] + step, max_shift);
+                        if use_w[0] != use_w[1] && !use_w[ai] {
+                            free_blocked = true;
+                        }
+                        apply_arm(
+                            &mut locals,
+                            ai,
+                            base[ai] + extra[ai],
+                            base_frames[f][body.arms[ai].hand],
+                        );
+                    }
+                }
+            }
+            if extra[0].length() > 0.0 || extra[1].length() > 0.0 {
+                any = true;
+            }
+            need[0][f] = extra[0];
+            need[1][f] = extra[1];
+        }
+        if !any {
+            break;
+        }
+        let smooth = [
+            envelope(&need[0], times, ramp),
+            envelope(&need[1], times, ramp),
+        ];
+        for f in 0..n {
+            if smooth[0][f].length() <= 0.0 && smooth[1][f].length() <= 0.0 {
+                continue;
+            }
+            let mut locals = base_frames[f].clone();
+            for ai in 0..2 {
+                if smooth[ai][f].length() > 0.0 {
+                    offset[ai][f] = clamp_vec(offset[ai][f] + smooth[ai][f], max_shift);
+                }
+                if offset[ai][f].length() > 0.0 {
+                    apply_arm(
+                        &mut locals,
+                        ai,
+                        wrist0[ai][f] + offset[ai][f],
+                        base_frames[f][body.arms[ai].hand],
+                    );
+                }
+            }
+            frames[f] = locals;
+        }
+    }
+
+    let dt = if times.len() > 1 {
+        ((times[times.len() - 1] - times[0]) / (times.len() - 1) as f64).max(1e-6)
+    } else {
+        1.0 / 30.0
+    };
+    let step = MAX_OFFSET_SPEED * body.height * dt;
+    let final_off = [
+        rate_limit(&steady_dir(&offset[0]), step),
+        rate_limit(&steady_dir(&offset[1]), step),
+    ];
+    for f in 0..n {
+        if final_off[0][f].length() <= 0.0 && final_off[1][f].length() <= 0.0 {
+            continue;
+        }
+        let mut locals = base_frames[f].clone();
+        for ai in 0..2 {
+            if final_off[ai][f].length() > 0.0 {
+                apply_arm(
+                    &mut locals,
+                    ai,
+                    wrist0[ai][f] + final_off[ai][f],
+                    base_frames[f][body.arms[ai].hand],
+                );
+            }
+        }
+        frames[f] = locals;
+    }
+
+    for ai in 0..2 {
+        let changed = final_off[ai].iter().filter(|o| o.length() > 0.0).count();
+        if changed == 0 {
+            continue;
+        }
+        if let Some(rep) = report.arms.get_mut(ai) {
+            let (fa, da, _) = measure_with_slack(body, ai, rig, frames, use_w[ai], src_slack);
+            let msl = mesh_slacks.get(ai).map(Vec::as_slice);
+            let (ma, mda, _) = mesh_measure_with_slack(body, ai, rig, frames, use_w[ai], msl);
+            rep.frames_after = fa;
+            rep.max_depth_after = da;
+            rep.mesh_frames_after = ma.iter().filter(|&&x| x).count();
+            rep.mesh_depth_after = mda;
+            rep.frames_changed = rep.frames_changed.max(changed);
+            let offs = &final_off[ai];
+            let ms = offs.iter().map(|o| o.length()).fold(0.0, f64::max);
+            rep.max_shift = rep.max_shift.max(ms);
+        }
+    }
+}
+
 /// Run the pass on one clip's frames (target locals per frame, sampled
 /// at `times`). Edits `frames` in place. Proxies drive the fix; the exact
 /// mesh check verifies it, and an arm that still cuts the mesh is
@@ -2237,18 +2990,44 @@ pub fn fix_clip(
     clip: &str,
     opts: &Options,
 ) -> ClipContact {
+    fix_clip_with_source(body, rig, frames, times, clip, opts, None)
+}
+
+/// [`fix_clip`] with optional source-body context so contacts already present
+/// on the source body itself keep that depth as per-frame slack on the target.
+pub fn fix_clip_with_source(
+    body: &Body,
+    rig: &Rig,
+    frames: &mut [Vec<Option<Trs>>],
+    times: &[f64],
+    clip: &str,
+    opts: &Options,
+    source: Option<(&Body, &Rig, &[Vec<Option<Trs>>])>,
+) -> ClipContact {
     let weapon = opts.weapon_in(clip);
     let margin = opts.margin * body.height;
+    let src_slack = source.and_then(|(sb, srig, sfr)| {
+        if sfr.len() == frames.len() {
+            Some(SourceSlack::build(
+                body, rig, frames, sb, srig, sfr, weapon, opts,
+            ))
+        } else {
+            None
+        }
+    });
     let mut report = ClipContact {
         weapon,
         arms: Vec::new(),
         height: body.height,
     };
+    let mut mesh_slacks: Vec<Vec<f64>> = Vec::with_capacity(body.arms.len());
     for ai in 0..body.arms.len() {
         let arm = &body.arms[ai];
         let use_weapon = weapon && arm.weapon.is_some();
-        let (fb, db, contacts) = measure(body, ai, rig, frames, use_weapon);
-        let (mb, mdb, worst_at) = mesh_measure(body, ai, rig, frames, use_weapon);
+        let (fb, db, contacts) =
+            measure_with_slack(body, ai, rig, frames, use_weapon, src_slack.as_ref());
+        let (mb, mdb, worst_at, arm_mesh_slack) =
+            mesh_measure_initial(body, ai, rig, frames, use_weapon, source);
         let mut rep = ArmReport {
             side: arm.side.clone(),
             frames_before: fb,
@@ -2260,6 +3039,7 @@ pub fn fix_clip(
             ..Default::default()
         };
         if fb == 0 && rep.mesh_frames_before == 0 {
+            mesh_slacks.push(arm_mesh_slack);
             report.arms.push(rep);
             continue;
         }
@@ -2271,16 +3051,19 @@ pub fn fix_clip(
             rep.max_depth_after = db;
             rep.mesh_frames_after = rep.mesh_frames_before;
             rep.mesh_depth_after = mdb;
+            mesh_slacks.push(arm_mesh_slack);
             report.arms.push(rep);
             continue;
         }
         let original: Vec<Vec<Option<Trs>>> = frames.to_vec();
         let mut best: Option<Attempt> = None;
+        let sl = src_slack.as_ref();
+        let msl = Some(arm_mesh_slack.as_slice());
         for grow in [1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.4, 3.0] {
             let (fixed, offset, turns) = fix_arm(
-                body, rig, ai, &original, times, use_weapon, margin, opts.ramp, grow,
+                body, rig, ai, &original, times, use_weapon, margin, opts.ramp, grow, sl,
             );
-            let (ma, mda, _) = mesh_measure(body, ai, rig, &fixed, use_weapon);
+            let (ma, mda, _) = mesh_measure_with_slack(body, ai, rig, &fixed, use_weapon, msl);
             let left = ma.iter().filter(|&&x| x).count();
             let better = best
                 .as_ref()
@@ -2333,10 +3116,10 @@ pub fn fix_clip(
                 fixed[f][arm_.hand] = original[f][arm_.hand];
             }
         }
-        let (ma, mda, _) = mesh_measure(body, ai, rig, &fixed, use_weapon);
+        let (ma, mda, _) = mesh_measure_with_slack(body, ai, rig, &fixed, use_weapon, msl);
         let left = ma.iter().filter(|&&x| x).count();
         frames.clone_from_slice(&fixed);
-        let (fa, da, _) = measure(body, ai, rig, frames, use_weapon);
+        let (fa, da, _) = measure_with_slack(body, ai, rig, frames, use_weapon, src_slack.as_ref());
         rep.frames_after = fa;
         rep.max_depth_after = da;
         rep.mesh_frames_after = left;
@@ -2348,8 +3131,21 @@ pub fn fix_clip(
             .count();
         rep.max_turn = turns.iter().map(|t| t.length()).fold(0.0, f64::max);
         rep.max_shift = offset.iter().map(|o| o.length()).fold(0.0, f64::max);
+        mesh_slacks.push(arm_mesh_slack);
         report.arms.push(rep);
     }
+    let sl = src_slack.as_ref();
+    fix_arm_vs_arm(
+        body,
+        rig,
+        frames,
+        times,
+        weapon,
+        opts,
+        sl,
+        &mut report,
+        &mesh_slacks,
+    );
     report
 }
 
@@ -2466,5 +3262,70 @@ mod tests {
         assert_eq!(smoothstep(0.0), 0.0);
         assert_eq!(smoothstep(1.0), 1.0);
         assert!((smoothstep(0.5) - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn arm_vs_shin_clears_reachable_crouch_without_moving_leg() {
+        let doc = crate::fixture::humanoid(crate::fixture::Naming::Def, false, false).unwrap();
+        let rig = Rig::from_doc(&doc).unwrap();
+        let opts = Options {
+            weapon_side: None,
+            ..Options::default()
+        };
+        let body = Body::build(&doc, &rig, &opts).unwrap().unwrap();
+        let shin_cap = body
+            .static_parts
+            .iter()
+            .find(|c| c.name == "shin.L")
+            .expect("shin.L proxy");
+        let arm_l = body.arms.iter().find(|a| a.side == "L").unwrap();
+        let sp = rig.find("DEF-spine.001").unwrap();
+        let th = rig.find("DEF-thigh.L").unwrap();
+        let sh = rig.find("DEF-shin.L").unwrap();
+        let ft = rig.find("DEF-foot.L").unwrap();
+
+        let mut crouch = vec![None; rig.names.len()];
+        let mut s_trs = rig.rest[sp];
+        s_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), 35f64.to_radians());
+        crouch[sp] = Some(s_trs);
+        let mut t_trs = rig.rest[th];
+        t_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), -110f64.to_radians());
+        crouch[th] = Some(t_trs);
+        let mut k_trs = rig.rest[sh];
+        k_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), 75f64.to_radians());
+        crouch[sh] = Some(k_trs);
+
+        let cw = rig.world(&crouch);
+        let shin_mid = (cw[sh].t + cw[ft].t).scale(0.5);
+        let w_far = cw[arm_l.hand].t;
+        let times: Vec<f64> = (0..15).map(|i| i as f64 / 30.0).collect();
+        let mut frames = Vec::with_capacity(times.len());
+        for i in 0..times.len() {
+            let mut loc = crouch.clone();
+            let s = 1.0 - ((i as f64 - 7.0) / 7.0).abs();
+            let target = w_far + (shin_mid - w_far).scale(s);
+            solve_arm(&rig, &mut loc, arm_l.upper, arm_l.fore, arm_l.hand, target);
+            frames.push(loc);
+        }
+        let orig = frames.clone();
+        let pen_of = |fr: &[Option<Trs>]| -> f64 {
+            let w = rig.world(fr);
+            let p_fo = depth(&arm_l.forearm, shin_cap, &body.inv_rest, &w, 0.0).0;
+            let p_ha = depth(&arm_l.palm, shin_cap, &body.inv_rest, &w, 0.0).0;
+            p_fo.max(p_ha)
+        };
+        let before = frames.iter().map(|f| pen_of(f)).fold(0.0f64, f64::max);
+        assert!(before > 0.02, "expected shin hit before fix, got {before}");
+
+        fix_clip(&body, &rig, &mut frames, &times, "dodge_shin", &opts);
+        for (i, fr) in frames.iter().enumerate() {
+            let after = pen_of(fr);
+            assert!(after <= 0.002, "frame {i}: shin pen {after} > 0.002");
+            for leg in [th, sh] {
+                let r0 = orig[i][leg].unwrap_or(rig.rest[leg]).r;
+                let r1 = fr[leg].unwrap_or(rig.rest[leg]).r;
+                assert!(r0.angle_to(r1) < 1e-6, "leg joint moved on frame {i}");
+            }
+        }
     }
 }

@@ -506,6 +506,17 @@ pub fn retarget_with(
         }
         None => None,
     };
+    let mut src_bodies: Vec<Option<crate::contact::Body>> = vec![None; sources.len()];
+    if let Some(o) = contact {
+        for &(si, _, _) in &jobs {
+            if src_bodies[si].is_none() {
+                let built = crate::contact::Body::build(&sources[si].1, &mapped[si].rig, o);
+                if let Ok(Some(sb)) = built {
+                    src_bodies[si] = Some(sb);
+                }
+            }
+        }
+    }
     for (si, ai, base) in &jobs {
         let label = &sources[*si].0;
         let src = &mapped[*si];
@@ -533,6 +544,12 @@ pub fn retarget_with(
             let mut tracks: Vec<Vec<Trs>> = vec![Vec::with_capacity(frames); nodes.len()];
             let mut max_err: f64 = 0.0;
             let mut posed: Vec<Vec<Option<Trs>>> = Vec::with_capacity(frames);
+            let has_src_body = src_bodies[*si].is_some();
+            let mut src_posed: Vec<Vec<Option<Trs>>> = if has_src_body {
+                Vec::with_capacity(frames)
+            } else {
+                Vec::new()
+            };
             for f in 0..frames {
                 let t = if frames > 1 {
                     anim.duration * f as f64 / (frames - 1) as f64
@@ -540,7 +557,11 @@ pub fn retarget_with(
                     0.0
                 };
                 times.push(t);
-                let (locals, err) = transfer.frame(&anim.sample(&src.rig, t));
+                let s_sample = anim.sample(&src.rig, t);
+                let (locals, err) = transfer.frame(&s_sample);
+                if has_src_body {
+                    src_posed.push(s_sample);
+                }
                 max_err = max_err.max(err);
                 posed.push(locals);
             }
@@ -552,11 +573,24 @@ pub fn retarget_with(
             } else {
                 None
             };
+            // Width-first retargeting per body (`width_refit.rs`).
+            if let (Some(tb), Some(sb), Some(o)) = (&body, &src_bodies[*si], contact) {
+                if o.refit_width {
+                    crate::width_refit::refit_clip(
+                        sb, src, &src_posed, tb, &tgt, &mut posed, &name, o,
+                    );
+                }
+            }
             // Contact pass on the character's own body (`contact.rs`).
             let contact_report = match (&body, contact) {
-                (Some(b), Some(o)) => Some(crate::contact::fix_clip(
-                    b, &tgt.rig, &mut posed, &times, &name, o,
-                )),
+                (Some(b), Some(o)) => {
+                    let src_ctx = src_bodies[*si]
+                        .as_ref()
+                        .map(|sb| (sb, &src.rig, src_posed.as_slice()));
+                    Some(crate::contact::fix_clip_with_source(
+                        b, &tgt.rig, &mut posed, &times, &name, o, src_ctx,
+                    ))
+                }
                 _ => None,
             };
             for mut locals in posed {
