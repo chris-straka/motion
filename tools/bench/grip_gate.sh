@@ -77,11 +77,12 @@ check_real_rig() {
   local label="$1"
   local rig="$2"
   local min_closed="$3"
+  local target_closed="${4:-}"
   local dir="$TMP/$label"
   mkdir -p "$dir"
   "$BIN" socket --input "$rig" --output "$dir/sock.glb" >/dev/null
-  "$BIN" attack --rig "$dir/sock.glb" --preset sweep --output "$dir/closed.glb" >/dev/null
-  # Planted cases built via stdlib Python (open hand spec, fingertip socket, +10 cm off)
+  "$BIN" attack --rig "$dir/sock.glb" --preset all --output "$dir/closed.glb" >/dev/null
+  # Planted cases built via stdlib Python (open hand, fingertip socket, +10 cm off)
   python3 - "$BIN" "$dir" <<'PY'
 import json, math, os, struct, subprocess, sys
 
@@ -179,46 +180,61 @@ g3["nodes"][sock_i]["translation"] = [st[k] + ez[k] * shift_off for k in range(3
 save_glb(os.path.join(DIR, "planted_10cm_off.glb"), g3, buf3)
 PY
 
-  for case in closed planted_open planted_fingertip planted_10cm_off; do
+  "$BIN" motion check --input "$dir/closed.glb" --camera game --blade-pose socket --no-through --json > "$dir/closed.json"
+  for case in planted_open planted_fingertip planted_10cm_off; do
     "$BIN" motion check --input "$dir/$case.glb" --clip sweep --camera game --blade-pose socket --no-through --json > "$dir/$case.json"
   done
 
-  if python3 - "$label" "$dir" "$min_closed" <<'PY'
+  if python3 - "$label" "$dir" "$min_closed" "$target_closed" <<'PY'
 import json, os, sys
-label, d, min_closed = sys.argv[1], sys.argv[2], float(sys.argv[3])
+label, d, min_closed, target_s = sys.argv[1], sys.argv[2], float(sys.argv[3]), sys.argv[4]
+target = float(target_s) if target_s else None
 ok = True
-for case in ("closed", "planted_open", "planted_fingertip", "planted_10cm_off"):
+j = json.load(open(os.path.join(d, "closed.json")))
+by_name = {c["clip"]: c["read_cam"]["grip"] for c in j["clips"]}
+for preset in ("cleave", "backcut", "sweep", "thrust"):
+    if preset not in by_name:
+        print(f"    ERROR: missing preset {preset} on {label}")
+        ok = False
+        continue
+    g = by_name[preset]
+    print(f"  {label:14s} closed/{preset:8s}   : score={g['score']:.3f} palm={g['palm_surface_cm']:.1f}cm wrap={g['skin_wrap']:.3f} curl={g['curl_deg']:.1f}deg skin={g['skin_based']}")
+    if not g["skin_based"]:
+        print(f"    ERROR: skin_based is False on {label} {preset}")
+        ok = False
+    if min_closed > 0 and g["score"] < min_closed:
+        print(f"    ERROR: {label} {preset} score {g['score']} < {min_closed}")
+        ok = False
+    if target is not None and abs(g["score"] - target) > 0.02:
+        print(f"    ERROR: {label} {preset} score {g['score']} not within 0.02 of {target}")
+        ok = False
+for case in ("planted_open", "planted_fingertip", "planted_10cm_off"):
     j = json.load(open(os.path.join(d, f"{case}.json")))
     g = j["clips"][0]["read_cam"]["grip"]
     print(f"  {label:14s} {case:18s}: score={g['score']:.3f} palm={g['palm_surface_cm']:.1f}cm wrap={g['skin_wrap']:.3f} curl={g['curl_deg']:.1f}deg skin={g['skin_based']}")
     if not g["skin_based"]:
         print(f"    ERROR: skin_based is False on {label} {case}")
         ok = False
-    if case == "closed" and min_closed > 0:
-        if g["score"] < min_closed:
-            print(f"    ERROR: closed score {g['score']} < {min_closed}")
-            ok = False
-    elif case.startswith("planted_"):
-        if g["score"] >= 0.30:
-            print(f"    ERROR: planted case {case} scored {g['score']} >= 0.30")
-            ok = False
+    if g["score"] >= 0.30:
+        print(f"    ERROR: planted case {case} scored {g['score']} >= 0.30")
+        ok = False
 sys.exit(0 if ok else 1)
 PY
   then
-    pass "real rig $label (closed + planted cases)"
+    pass "real rig $label (all 4 presets + planted cases)"
   else
-    fail "real rig $label (closed + planted cases)"
+    fail "real rig $label (all 4 presets + planted cases)"
   fi
 }
 
 if [ -n "$FIVE_FINGER" ]; then
   echo "== real five-finger rig check"
-  check_real_rig "five_finger" "$FIVE_FINGER" "0.90"
+  check_real_rig "five_finger" "$FIVE_FINGER" "0.90" "0.966"
 fi
 
 if [ -n "$SINGLE_CHAIN" ]; then
   echo "== real single-chain rig check"
-  check_real_rig "single_chain" "$SINGLE_CHAIN" "0.0"
+  check_real_rig "single_chain" "$SINGLE_CHAIN" "0.90" ""
 fi
 
 echo
