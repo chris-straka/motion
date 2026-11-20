@@ -115,6 +115,62 @@ def find_action(clip):
     return act
 
 
+def pick_armature_slot(arm, act):
+    """Pick the Blender 5.2+ Action slot that drives `arm`'s pose bones.
+
+    When a GLB animation keys both Armature pose bones and unskinned child
+    nodes (such as finger empties), Blender creates one slot per object and
+    `act.slots[0]` is often an Empty rather than the Armature — binding the
+    Armature to `slots[0]` silently freezes the entire body.
+    """
+    slots = list(getattr(act, "slots", None) or [])
+    if not slots:
+        return None
+    for layer in getattr(act, "layers", None) or []:
+        for strip in getattr(layer, "strips", None) or []:
+            for cb in getattr(strip, "channelbags", None) or []:
+                if any(getattr(fc, "data_path", "").startswith("pose.bones")
+                       for fc in getattr(cb, "fcurves", None) or []):
+                    slot = getattr(cb, "slot", None)
+                    if slot is not None:
+                        return slot
+    arm_name = getattr(arm, "name", "")
+    for s in slots:
+        sname = getattr(s, "name_display", None) or getattr(s, "identifier", "")
+        if sname == arm_name or sname == f"OB{arm_name}":
+            return s
+    return slots[0]
+
+
+def bind_action(arm, act, objects=None):
+    """Bind `act` to `arm` (choosing the pose-bone slot) and to any other
+    scene objects whose names match additional slots in `act`."""
+    if arm.animation_data is None:
+        arm.animation_data_create()
+    arm.animation_data.action = act
+    slots = list(getattr(act, "slots", None) or [])
+    arm_slot = pick_armature_slot(arm, act)
+    if hasattr(arm.animation_data, "action_slot") and arm_slot is not None:
+        arm.animation_data.action_slot = arm_slot
+    if objects is not None and slots:
+        by_name = {o.name: o for o in objects}
+        for s in slots:
+            if s == arm_slot:
+                continue
+            sname = getattr(s, "name_display", None)
+            if not sname:
+                ident = getattr(s, "identifier", "")
+                sname = ident[2:] if len(ident) > 2 else ident
+            target = by_name.get(sname)
+            if target is None or target is arm:
+                continue
+            if target.animation_data is None:
+                target.animation_data_create()
+            target.animation_data.action = act
+            if hasattr(target.animation_data, "action_slot"):
+                target.animation_data.action_slot = s
+
+
 def load(row):
     clear()
     scn = bpy.context.scene
@@ -126,10 +182,7 @@ def load(row):
     act = find_action(row["clip"])
     if act is None:
         raise SystemExit(f"no clip {row['clip']} in {row['glb']}: {[a.name for a in bpy.data.actions]}")
-    arm.animation_data_create()
-    arm.animation_data.action = act
-    if hasattr(arm.animation_data, "action_slot") and act.slots:
-        arm.animation_data.action_slot = act.slots[0]
+    bind_action(arm, act, bpy.data.objects)
     if SPEC.get("prop"):
         meshes += attach_prop(arm, row["glb"], SPEC["prop"], SPEC.get("prop_pose", "socket"))
     f0, f1 = (int(round(x)) for x in act.frame_range)
