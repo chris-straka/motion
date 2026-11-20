@@ -74,9 +74,12 @@ pub const BLADE_LAG: f64 = 0.2;
 pub const GRIP_CLOSE: f64 = 0.9;
 /// How far the heel comes up in a pivot, degrees.
 pub const PIVOT_HEEL_DEG: f64 = 10.0;
-/// A forearm rolls this far either way, degrees (keeps pronation/supination
-/// in the forearm rather than dumping excess twist onto the point wrist seam).
-pub const FOREARM_ROLL_DEG: f64 = 105.0;
+/// A forearm rolls this far either way, degrees. Capping at 80 degrees keeps
+/// LBS forearm/elbow twist above the 50% volume-collapse threshold on rigs
+/// without forearm twist bones (`cos^2(40 deg) = 58.7%`, whereas 105 degrees
+/// collapses to 37.1%), while rigs with a forearm twist helper already split
+/// roll 50/50 across the forearm and twist bone.
+pub const FOREARM_ROLL_DEG: f64 = 80.0;
 /// The foot may turn this far from its rest on the shin before the heel
 /// lifts, degrees.
 pub const ANKLE_MAX_DEG: f64 = 45.0;
@@ -1244,5 +1247,46 @@ mod tests {
                 "key {k}: {wrist_deg} deg"
             );
         }
+    }
+
+    #[test]
+    fn place_hand_caps_forearm_roll_at_80_deg_on_twistless_rig() {
+        assert_eq!(FOREARM_ROLL_DEG, 80.0);
+        let raw = humanoid_mitten(Naming::Plain, false, 0.0).unwrap();
+        let doc = match standardize(&raw, "humanoid").unwrap() {
+            Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+            Outcome::Refused(_, why) => panic!("{why}"),
+        };
+        let info = RigInfo::new(&doc).unwrap();
+        let spec = parse_spec(preset("cleave").unwrap()).unwrap();
+        let solver = Solver::new(&info, &spec).unwrap();
+        let s = solver.side;
+        assert!(!solver.has_forearm_twist[s]);
+        let (up, fo, ha) = (info.upper[s], info.fore[s], info.hand[s]);
+        let rest_up = info.rig.rest_world[up].rotation();
+        let rest_fo = info.rig.rest_world[fo].rotation();
+        let grip = solver.point(Vec3::new(-0.08, 0.62, 0.32));
+        let mut peak = 0.0f64;
+        for k in 0..12 {
+            let a = std::f64::consts::TAU * (k as f64) / 12.0;
+            let (sn, cs) = detmath::sin_cos(a);
+            let dir = info.to_rig(Vec3::new(cs, sn, 0.3)).normalized();
+            let mut locals = vec![None; info.rig.names.len()];
+            solver.place_hand(&mut locals, s, grip, dir, 0.0, 1.0);
+            let w = info.rig.world(&locals);
+            let axis_w = (w[ha].t - w[fo].t).normalized();
+            let natural_fo = w[up].rotation().mul(rest_up.conj()).mul(rest_fo);
+            let delta = w[fo].rotation().mul(natural_fo.conj());
+            let deg = twist_angle(delta, axis_w).abs().to_degrees();
+            assert!(
+                deg <= FOREARM_ROLL_DEG + 0.5,
+                "angle {k}: forearm roll {deg:.1} deg exceeded {FOREARM_ROLL_DEG} deg cap"
+            );
+            peak = peak.max(deg);
+        }
+        assert!(
+            peak >= FOREARM_ROLL_DEG - 1.0,
+            "expected test poses to hit {FOREARM_ROLL_DEG} deg cap, peak was {peak:.1} deg"
+        );
     }
 }
