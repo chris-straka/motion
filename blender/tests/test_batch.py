@@ -112,7 +112,7 @@ class TestBatch(unittest.TestCase):
                  "--",
                  "--target-blend", target_blend, "--bvh-dir", bvh_dir,
                  "--bonemap", map_path, "--out-dir", out_dir,
-                 "--manifest", manifest, "--source", "test",
+                 "--manifest", manifest, "--source", "owner",
                  "--license", "owner-recorded", "--fps", "120",
                  "--target-name", "Target"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=300)

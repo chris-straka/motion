@@ -99,7 +99,8 @@ class TestManifest(unittest.TestCase):
                 self._manifest([self._clip(source=src, license=src)]))
             self.assertFalse(ok, f"{src} must be blocked for training")
             self.assertIn("BLOCKED", lines[0])
-        md = open(manifest.DEFAULT_LICENSING_MD, encoding="utf-8").read()
+        with open(manifest.DEFAULT_LICENSING_MD, encoding="utf-8") as fh:
+            md = fh.read()
         for needle in ("https://ai.google.dev/gemini-api/terms",
                        "https://www.byteplus.com/en/terms-of-service",
                        "https://klingai.com/terms-of-service",
