@@ -677,25 +677,30 @@ fn arm_vs_shin_clears_without_moving_leg() {
     let n_frames = 31usize;
     let times: Vec<f64> = (0..n_frames).map(|k| k as f64 / 30.0).collect();
 
-    // Base crouched-leg pose: lift left thigh forward -70 deg about +X, bend shin
-    // +50 deg about +X so the left shin sits around y = 0.85..1.10, z = +0.35.
+    // Base crouched-leg pose (spine pitched forward +45 deg, left thigh lifted
+    // -115 deg, left shin bent +95 deg) so shin.L sits comfortably within arm
+    // reach (like a dodge/crouch).
+    let sp = find("DEF-spine.001");
     let mut crouch = vec![None; rig.names.len()];
+    let mut sp_trs = rig.rest[sp];
+    sp_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), 45f64.to_radians());
+    crouch[sp] = Some(sp_trs);
     let mut t_trs = rig.rest[th_l];
-    t_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), -70f64.to_radians());
+    t_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), -115f64.to_radians());
     crouch[th_l] = Some(t_trs);
     let mut s_trs = rig.rest[sh_l];
-    s_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), 50f64.to_radians());
+    s_trs.r = Quat::from_axis_angle(Vec3::new(1.0, 0.0, 0.0), 95f64.to_radians());
     crouch[sh_l] = Some(s_trs);
 
     let cw = rig.world(&crouch);
     let knee = cw[sh_l].t;
     let ankle = cw[find("DEF-foot.L")].t;
     let shin_mid = (knee + ankle).scale(0.5);
-    // Clear of 1.0x shin (r_cap = 0.044*0.9 = 0.040, hand r = 0.020 -> sum 0.060)
-    // at +0.072 m outboard in X; on 1.4x target shin is shifted +0.036 m in X
-    // and thicker (r_cap = 0.055), so the hand lands straight inside shin.L!
-    let w_far = Vec3::new(0.60, 1.44, 0.05);
-    let w_near = Vec3::new(shin_mid.x + 0.072, shin_mid.y, shin_mid.z);
+    // Clear of 1.0x shin on the inboard side (dx = 0.092 > r_shin 0.056 +
+    // r_hand 0.029 = 0.085); on 1.4x raw FK the wider shoulder shifts the wrist
+    // +0.045 m straight into the thicker 1.4x shin (dx = 0.083 < 0.107 -> ~24 mm hit).
+    let w_far = Vec3::new(0.60, 1.33, 0.25);
+    let w_near = Vec3::new(shin_mid.x - 0.092, shin_mid.y + 0.03, shin_mid.z + 0.02);
 
     let mut frames = Vec::with_capacity(n_frames);
     for &t in &times {

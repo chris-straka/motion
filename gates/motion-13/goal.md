@@ -45,4 +45,4 @@ Implement `motion-13` as designed in `docs/width-refit.md`: width-first retarget
 ## Evidence of Done
 
 - `gates/motion-13/gate.sh` prints `GATE PASS` and exits 0 (verified via your `check` script).
-- All 5 tests in `rust/core/tests/width_refit.rs` pass, `tools/gate/carbon.sh` passes (all Rust tests, CLI goldens, fmt, zero warnings, Python suites), and `tools/bench/width_refit_check.sh` prints `WIDTH REFIT CHECK PASS`.
+- All 5 tests in `rust/core/tests/width_refit.rs` pass (including the reachable crouched-leg `arm_vs_shin_clears_without_moving_leg` test), `tools/gate/carbon.sh` passes (all Rust tests, CLI goldens, fmt, zero warnings, Python suites), and `tools/bench/width_refit_check.sh` prints `WIDTH REFIT CHECK PASS`.
