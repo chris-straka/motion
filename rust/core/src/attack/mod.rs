@@ -712,7 +712,7 @@ impl<'a> Solver<'a> {
                 r
             }
         };
-        let mut rot = self.hand_rot(&hold, dir, forearm);
+        let mut rot = self.hand_rot(&hold, dir, forearm).normalized();
         // Solve the arm for the hand's turn, turn the hand for the arm's
         // forearm (and its wrist limit), and again; the last pass solves
         // the arm for the final turn, so the grip is on its point.
@@ -734,7 +734,7 @@ impl<'a> Solver<'a> {
             }
             let w = rig.world(locals);
             forearm = (w[ha].t - w[fo].t).normalized();
-            rot = clamp_wrist(self.hand_rot(&hold, dir, forearm), forearm);
+            rot = clamp_wrist(self.hand_rot(&hold, dir, forearm), forearm).normalized();
         }
         // Near full arm extension a ~12 cm palm lever can oscillate in a
         // 2-cycle between passes, flipping the elbow >15 deg on the final
@@ -769,12 +769,35 @@ impl<'a> Solver<'a> {
             }
         }
         // The hand's own rest turn on this forearm, for the free hand.
-        let w = rig.world(locals);
-        let natural = w[fo]
+        let mut w = rig.world(locals);
+        let mut natural = w[fo]
             .rotation()
             .mul(self.rest_rot(fo).conj())
             .mul(self.rest_rot(ha));
-        let rot = natural.slerp(rot, blend).normalized();
+        let rot = if blend >= 1.0 {
+            rot
+        } else if blend <= 0.0 {
+            natural.normalized()
+        } else {
+            let blended = natural.slerp(rot, blend).normalized();
+            let wrist = grip - blended.rotate_vec(hold.grip).scale(blend);
+            ik::reach(
+                rig,
+                locals,
+                up,
+                fo,
+                ha,
+                wrist,
+                w[up].t + pole_off.scale(self.h),
+                self.arm_axis[s],
+            );
+            w = rig.world(locals);
+            natural = w[fo]
+                .rotation()
+                .mul(self.rest_rot(fo).conj())
+                .mul(self.rest_rot(ha));
+            blended
+        };
         // Pronation/supination about the forearm: when a distal forearm twist
         // helper exists (weighted to the wrist half of the forearm), forearm
         // takes half and helpers::drive puts half the remainder onto
@@ -1172,3 +1195,54 @@ pub fn preset(name: &str) -> Option<&'static str> {
 }
 
 pub const PRESETS: [&str; 4] = ["cleave", "backcut", "sweep", "thrust"];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::fixture::{humanoid_mitten, Naming};
+    use crate::standardize::{standardize, Outcome};
+
+    #[test]
+    fn damped_wrist_pass_lands_exact_on_twisted_mitten_arm() {
+        let raw = humanoid_mitten(Naming::Plain, true, 75.0).unwrap();
+        let doc = match standardize(&raw, "humanoid").unwrap() {
+            Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+            Outcome::Refused(_, why) => panic!("{why}"),
+        };
+        let info = RigInfo::new(&doc).unwrap();
+        let spec_json = r#"{"format":"motionforge-attack","version":1,"name":"easy","hand":"R","keys":[
+ {"role":"ready","grip":[-0.2,0.55,0.12],"blade":[0,1,0.3]},
+ {"role":"windup","t":0.2,"hold":0.1,"grip":[-0.22,0.8,-0.05],"blade":[-0.3,0.8,-0.5],
+  "hips":{"turn":-30,"drop":0.05,"shift":[0,-0.02]},"torso":{"twist":-25,"lean":-5},
+  "feet":{"R":[-0.04,-0.1,-30]}},
+ {"role":"strike","t":0.1,"ease":"in","grip":[-0.05,0.6,0.3],"blade":[0.4,-0.2,0.9],
+  "hips":{"turn":15,"drop":0.1,"shift":[0.01,0.04]},"torso":{"twist":15,"lean":20}},
+ {"role":"follow","t":0.1,"hold":0.2,"ease":"out","grip":[0.1,0.5,0.2],"blade":[0.8,-0.4,0.1],
+  "hips":{"turn":30,"drop":0.12,"shift":[0.02,0.05]},"torso":{"twist":25,"lean":25}}]}"#;
+        let spec = parse_spec(spec_json).unwrap();
+        let solver = Solver::new(&info, &spec).unwrap();
+        let (_, frames, report) = solve(&info, &spec).unwrap();
+        let hold = solver.hold[solver.side].unwrap();
+        let (fo, ha) = (info.fore[solver.side], info.hand[solver.side]);
+        for (k, key) in spec.keys.iter().enumerate() {
+            let m = report.key_miss[k];
+            assert!(m.grip < 1e-9, "key {k}: {m:?}");
+            let frame = &frames[report.keys[k].0];
+            let (got_grip, _) = solver.sword(frame);
+            let want_grip = solver.point(key.grip);
+            assert!(
+                (got_grip - want_grip).length() < 1e-9 * solver.h,
+                "key {k}: grip residual {}",
+                (got_grip - want_grip).length()
+            );
+            let w = info.rig.world(frame);
+            let fa = (w[ha].t - w[fo].t).normalized();
+            let hand_fa = w[ha].rotation().rotate_vec(hold.forearm);
+            let wrist_deg = detmath::acos(hand_fa.dot(fa).clamp(-1.0, 1.0)).to_degrees();
+            assert!(
+                wrist_deg <= PALM_WRIST_MAX_DEG + 2.0,
+                "key {k}: {wrist_deg} deg"
+            );
+        }
+    }
+}

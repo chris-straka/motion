@@ -12,8 +12,8 @@
 //! baked into a clip that left elbows bent out of their hinge plane.)
 
 use crate::detmath;
-use crate::keypose::fit::{set_world_rot, signed_angle};
-use crate::math::{shortest_arc, Quat, Vec3};
+use crate::keypose::fit::set_world_rot;
+use crate::math::{Quat, Vec3};
 use crate::rig::{Rig, Trs};
 
 /// How far a hinge may bend, radians (0 = straight): the game's
@@ -99,6 +99,48 @@ pub fn two_bone(a: Vec3, b: Vec3, c: Vec3, target: Vec3, pole: Vec3, soft: f64) 
     }
 }
 
+/// Shortest-arc quaternion taking unit `from` onto unit `to` with full
+/// precision down to tiny angles (unlike `math::shortest_arc`, which snaps
+/// angles below ~1.4e-6 rad to identity).
+fn exact_shortest_arc(from: Vec3, to: Vec3) -> Quat {
+    let d = from.dot(to);
+    if d <= -1.0 + 1e-12 {
+        let p = any_perp(from);
+        return Quat::new(0.0, p.x, p.y, p.z);
+    }
+    let k = (from.length_sq() * to.length_sq()).sqrt() + d;
+    let v = from.cross(to);
+    Quat::new(k, v.x, v.y, v.z).normalized()
+}
+
+/// Rotation about unit `axis` taking `a`'s projection onto the plane
+/// normal to `axis` onto `b`'s projection (half-angle form, no `acos`
+/// precision loss near 0 or pi).
+fn rot_about_axis(a: Vec3, b: Vec3, axis: Vec3) -> Quat {
+    let ap = a - axis.scale(a.dot(axis));
+    let bp = b - axis.scale(b.dot(axis));
+    let la = ap.length();
+    let lb = bp.length();
+    if la < 1e-12 || lb < 1e-12 {
+        return Quat::IDENTITY;
+    }
+    let au = ap.scale(1.0 / la);
+    let bu = bp.scale(1.0 / lb);
+    let c = au.dot(bu).clamp(-1.0, 1.0);
+    let s = au.cross(bu).dot(axis);
+    if c >= 0.0 {
+        let k = 1.0 + c;
+        Quat::new(k, axis.x * s, axis.y * s, axis.z * s).normalized()
+    } else {
+        let k = 1.0 - c;
+        if s >= 0.0 {
+            Quat::new(s, axis.x * k, axis.y * k, axis.z * k).normalized()
+        } else {
+            Quat::new(-s, -axis.x * k, -axis.y * k, -axis.z * k).normalized()
+        }
+    }
+}
+
 /// Write a [`two_bone`] answer onto the limb's bones as a hinge (module
 /// doc). `axis_rest` is the limb's rest hinge axis in the world
 /// (`contact::hinge_axis`); without one each bone turns the shortest way.
@@ -117,7 +159,7 @@ pub fn set_limb(
     let u_cur = (world[lower].t - a).normalized();
     let u_new = (sol.mid - a).normalized();
     let v_new = (sol.end - sol.mid).normalized();
-    let mut ru = shortest_arc(u_cur, u_new).mul(world[upper].rotation());
+    let mut ru = exact_shortest_arc(u_cur, u_new).mul(world[upper].rotation());
     let ru_rest = rig.rest_world[upper].rotation();
     let rl_rest = rig.rest_world[lower].rotation();
     let normal = u_new.cross(v_new);
@@ -127,12 +169,13 @@ pub fn set_limb(
             // Roll the upper bone about itself: its hinge axis onto the
             // bend plane's normal.
             let h = ru.mul(ru_rest.conj()).rotate_vec(ax);
-            ru = Quat::from_axis_angle(u_new, signed_angle(h, n, u_new)).mul(ru);
+            ru = rot_about_axis(h, n, u_new).mul(ru);
             Some(n)
         }
         _ => None,
     };
-    set_world_rot(rig, locals, upper, ru.normalized());
+    let ru = ru.normalized();
+    set_world_rot(rig, locals, upper, ru);
     let rl = match hinge {
         Some(n) => {
             // The lower bone as it rests on the upper one, turned about the
@@ -140,12 +183,12 @@ pub fn set_limb(
             let base = ru.mul(ru_rest.conj()).mul(rl_rest);
             let v_rest = rig.head(end) - rig.head(lower);
             let v_base = base.mul(rl_rest.conj()).rotate_vec(v_rest).normalized();
-            Quat::from_axis_angle(n, signed_angle(v_base, v_new, n)).mul(base)
+            rot_about_axis(v_base, v_new, n).mul(base)
         }
         None => {
             let w = rig.world(locals);
             let v_cur = (w[end].t - w[lower].t).normalized();
-            shortest_arc(v_cur, v_new).mul(w[lower].rotation())
+            exact_shortest_arc(v_cur, v_new).mul(w[lower].rotation())
         }
     };
     set_world_rot(rig, locals, lower, rl.normalized());
@@ -168,20 +211,31 @@ pub fn reach(
     axis_rest: Option<Vec3>,
 ) -> f64 {
     let mut aim = target;
-    let mut left = f64::INFINITY;
-    for _ in 0..4 {
+    let mut best_left = f64::INFINITY;
+    let mut best_u = locals[upper];
+    let mut best_l = locals[lower];
+    for _ in 0..16 {
         let w = rig.world(locals);
         let sol = two_bone(w[upper].t, w[lower].t, w[end].t, aim, pole, 0.0);
         set_limb(rig, locals, upper, lower, end, &sol, axis_rest);
         let got = rig.world(locals)[end].t;
-        left = (got - target).length();
+        let left = (got - target).length();
+        if left < best_left {
+            best_left = left;
+            best_u = locals[upper];
+            best_l = locals[lower];
+        } else {
+            locals[upper] = best_u;
+            locals[lower] = best_l;
+            break;
+        }
         // Out of reach (the solve itself missed): nothing to correct.
-        if left < 1e-10 || sol.miss > 1e-9 {
+        if left < 1e-12 || sol.miss > 1e-9 {
             break;
         }
         aim = aim + (target - got);
     }
-    left
+    best_left
 }
 
 #[cfg(test)]
@@ -227,5 +281,88 @@ mod tests {
         assert!(soft_reach(0.95, 1.0, 0.1) < 0.95);
         assert!((soft_reach(0.5, 1.0, 0.1) - 0.5).abs() < 1e-12);
         assert!(soft_reach(5.0, 1.0, 0.1) <= 1.0 && soft_reach(1.05, 1.0, 0.1) < 1.0);
+    }
+
+    #[test]
+    fn exact_rotations_have_no_small_angle_deadzone() {
+        let axis = Vec3::new(0.3, -0.7, 0.6).normalized();
+        let start = any_perp(axis);
+        for ang in [
+            0.0,
+            1e-10,
+            1e-7,
+            1e-6,
+            -1e-7,
+            0.5,
+            -0.5,
+            std::f64::consts::FRAC_PI_2,
+            2.5,
+            -2.5,
+            std::f64::consts::PI,
+        ] {
+            let want = Quat::from_axis_angle(axis, ang).rotate_vec(start);
+            let q_arc = exact_shortest_arc(start, want);
+            assert!(
+                (q_arc.rotate_vec(start) - want).length() < 1e-12,
+                "exact_shortest_arc failed at angle {ang}"
+            );
+            let q_ax = rot_about_axis(start, want, axis);
+            assert!(
+                (q_ax.rotate_vec(start) - want).length() < 1e-12,
+                "rot_about_axis failed at angle {ang}"
+            );
+        }
+    }
+
+    #[test]
+    fn reach_converges_on_small_refinement_and_off_plane_rest() {
+        use crate::contact::hinge_axis;
+        use crate::fixture::{humanoid_mitten, Naming};
+        use crate::glb::{node_trs, set_node_trs, Document};
+        use crate::keypose::fit::RigInfo;
+        use crate::standardize::{standardize, Outcome};
+
+        let raw = humanoid_mitten(Naming::Plain, true, 75.0).unwrap();
+        let doc = match standardize(&raw, "humanoid").unwrap() {
+            Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+            Outcome::Refused(_, why) => panic!("{why}"),
+        };
+        let info = RigInfo::new(&doc).unwrap();
+        let (up, fo, ha) = (info.upper[1], info.fore[1], info.hand[1]);
+        let ax = hinge_axis(&info.rig, up, fo, ha);
+        let mut locals = vec![None; info.rig.names.len()];
+        let sh = info.rig.head(up);
+        let target = sh + Vec3::new(-0.15, -0.25, 0.20);
+        let pole = sh + Vec3::new(-0.30, -0.50, -0.20);
+        let m1 = reach(&info.rig, &mut locals, up, fo, ha, target, pole, ax);
+        assert!(m1 < 1e-11, "initial reach miss {m1}");
+        // Sub-micrometre refinement sits inside math::shortest_arc's 1.4e-6 rad
+        // deadzone; reach must still land to < 1e-11.
+        let target2 = target + Vec3::new(3e-8, -2e-8, 3.5e-8);
+        let m2 = reach(&info.rig, &mut locals, up, fo, ha, target2, pole, ax);
+        assert!(m2 < 1e-11, "small refinement miss {m2}");
+
+        // Forearm resting off its hinge plane forces multi-step convergence.
+        let mut off_doc = doc.clone();
+        let (t, r, s) = node_trs(&off_doc.array("nodes")[ha]);
+        let off_local = info.rig.rest_world[fo]
+            .rotation()
+            .conj()
+            .rotate_vec(ax.unwrap().scale(0.015));
+        set_node_trs(&mut off_doc.array_mut("nodes")[ha], t + off_local, r, s);
+        let off_info = RigInfo::new(&off_doc).unwrap();
+        let mut off_locals = vec![None; off_info.rig.names.len()];
+        let off_ax = hinge_axis(&off_info.rig, up, fo, ha);
+        let m3 = reach(
+            &off_info.rig,
+            &mut off_locals,
+            up,
+            fo,
+            ha,
+            target,
+            pole,
+            off_ax,
+        );
+        assert!(m3 < 1e-10, "off-plane rest reach miss {m3}");
     }
 }
