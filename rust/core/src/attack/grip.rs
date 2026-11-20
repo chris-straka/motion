@@ -39,13 +39,16 @@ pub const CANT: f64 = 0.25;
 /// How far a free hand's fingers curl (share of a fist).
 pub const RELAXED: f64 = 0.35;
 /// On a distal-tip mitten rig (`palm_len > 2 * finger_len`, where `Hand ->
-/// Finger1` starts up in the distal forearm/wrist and runs to the distal
-/// phalanges), the anatomical palm/thumb-web grip pocket sits ~75% along
-/// `Hand -> Finger1` (just behind the curling mitten fingers), and the short
-/// distal tip wraps at most `DISTAL_MITTEN_CURL` of a full fist so it closes
-/// onto the handle without folding into itself.
+/// Finger1` starts at the wrist and runs nearly to the fingertips), the
+/// cupped hand mesh sits around the palm bone axis: the grip pocket sits at
+/// `DISTAL_MITTEN_PALM_SHARE` along `Hand -> Finger1`, offset by
+/// `DISTAL_MITTEN_PALM_OFFSET` (`0.5 * HANDLE_R`) toward the palm so the
+/// handle seats inside the cupped pocket instead of out at the palm edge,
+/// and the short distal tip curls up to `DISTAL_MITTEN_CURL` of a full fist
+/// (~34 deg at `close = 0.9`, matching five-finger hands without folding).
 pub const DISTAL_MITTEN_PALM_SHARE: f64 = 0.55;
-pub const DISTAL_MITTEN_CURL: f64 = 0.55;
+pub const DISTAL_MITTEN_PALM_OFFSET: f64 = 0.008;
+pub const DISTAL_MITTEN_CURL: f64 = 0.72;
 
 const FINGERS: [&str; 5] = ["f_index", "f_middle", "f_ring", "f_pinky", "thumb"];
 /// A fist when no grips file says: radians per joint (root, middle, tip).
@@ -266,18 +269,25 @@ pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
     let (fd, palm, kn) = single_finger_axes(rig, &mid, s == 1, info.fwd)?;
     // When `Hand -> mid[0]` is over twice the finger chain's own length
     // (a distal-tip mitten rig whose hand bone spans the palm and proximal
-    // fingers nearly to the tip), anchor the grip pocket in the palm (~45%
-    // from wrist to `mid[0]`) instead of floating it out at the fingertips.
+    // fingers nearly to the tip), anchor the grip pocket inside the cupped
+    // palm instead of floating it out at the fingertips or palm edge.
     let hand_head = rig.head(info.hand[s]);
     let palm_vec = rig.head(mid[0]) - hand_head;
     let palm_len = palm_vec.length();
     let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
-    let base = if finger_len > 1e-9 && palm_len > 2.0 * finger_len {
-        hand_head + palm_vec.scale(DISTAL_MITTEN_PALM_SHARE)
+    let distal_mitten = finger_len > 1e-9 && palm_len > 2.0 * finger_len;
+    let (base, palm_offset) = if distal_mitten {
+        (
+            hand_head + palm_vec.scale(DISTAL_MITTEN_PALM_SHARE),
+            DISTAL_MITTEN_PALM_OFFSET,
+        )
     } else {
-        rig.head(mid[0]) + fd.scale(DOWN_FINGERS * unit)
+        (
+            rig.head(mid[0]) + fd.scale(DOWN_FINGERS * unit),
+            HANDLE_R + FINGER_R,
+        )
     };
-    let centre = base + palm.scale((HANDLE_R + FINGER_R) * unit);
+    let centre = base + palm.scale(palm_offset * unit);
     let blade = (kn + fd.scale(CANT)).normalized();
     let edge = (fd - blade.scale(fd.dot(blade))).normalized();
     let world = Quat::from_mat3(Mat3::from_cols(edge, blade, edge.cross(blade)));
@@ -630,5 +640,90 @@ mod tests {
         let (_, palm_k, kn_k) = single_finger_axes(&r_side_kink, &[0, 1, 2], true, fwd).unwrap();
         assert!(palm_k.approx_eq(Vec3::new(1.0, 0.0, 0.0), 1e-9));
         assert!(kn_k.approx_eq(Vec3::new(0.0, 0.0, 1.0), 1e-9));
+    }
+
+    #[test]
+    fn distal_mitten_seats_socket_in_palm_pocket_and_curls_cleanly() {
+        use crate::fixture::{humanoid_mitten, Naming};
+        use crate::glb::{node_trs, set_node_trs};
+        use crate::standardize::{standardize, Outcome};
+
+        let raw = humanoid_mitten(Naming::Plain, false, 0.0).unwrap();
+        let std_doc = match standardize(&raw, "humanoid").unwrap() {
+            Outcome::Done(d, _) => Document::parse(&d.to_bytes().unwrap()).unwrap(),
+            Outcome::Refused(_, why) => panic!("{why}"),
+        };
+
+        // Standard mitten (palm_len <= 2 * finger_len) keeps HANDLE_R + FINGER_R offset.
+        let std_info = RigInfo::new(&std_doc).unwrap();
+        let unit = 1.0;
+        let std_mid = single_chain(&std_info, 1).unwrap();
+        let (std_fd, std_palm, _) =
+            single_finger_axes(&std_info.rig, &std_mid, true, std_info.fwd).unwrap();
+        let std_ph = palm_hold(&std_info, 1, unit).unwrap();
+        let std_hw = std_info.rig.rest_world[std_info.hand[1]];
+        let std_world = std_hw.t + std_hw.rotation().rotate_vec(std_ph.grip);
+        let std_expected = std_info.rig.head(std_mid[0])
+            + std_fd.scale(DOWN_FINGERS * unit)
+            + std_palm.scale((HANDLE_R + FINGER_R) * unit);
+        assert!(std_world.approx_eq(std_expected, 1e-9));
+
+        // Distal-tip mitten (Hand -> Finger1 = 0.184 m > 2 * 0.048 m):
+        // seats inside the palm pocket (DISTAL_MITTEN_PALM_OFFSET) and curls 31.5..36 deg.
+        let mut distal_doc = std_doc;
+        let rig0 = Rig::from_doc(&distal_doc).unwrap();
+        for (side, sign) in [("L", 1.0), ("R", -1.0)] {
+            let f1 = rig0.find(&format!("DEF-f_middle.01.{side}")).unwrap();
+            let f2 = rig0.find(&format!("DEF-f_middle.02.{side}")).unwrap();
+            let f3 = rig0.find(&format!("DEF-f_middle.03.{side}")).unwrap();
+            let (_, r1, s1) = node_trs(&distal_doc.array("nodes")[f1]);
+            set_node_trs(
+                &mut distal_doc.array_mut("nodes")[f1],
+                Vec3::new(sign * 0.184, 0.0, 0.0),
+                r1,
+                s1,
+            );
+            let (_, r2, s2) = node_trs(&distal_doc.array("nodes")[f2]);
+            set_node_trs(
+                &mut distal_doc.array_mut("nodes")[f2],
+                Vec3::new(sign * 0.024, 0.0, 0.0),
+                r2,
+                s2,
+            );
+            let (_, r3, s3) = node_trs(&distal_doc.array("nodes")[f3]);
+            set_node_trs(
+                &mut distal_doc.array_mut("nodes")[f3],
+                Vec3::new(sign * 0.024, 0.0, 0.0),
+                r3,
+                s3,
+            );
+        }
+        let info = RigInfo::new(&distal_doc).unwrap();
+        let mid = single_chain(&info, 1).unwrap();
+        let (_, palm, _) = single_finger_axes(&info.rig, &mid, true, info.fwd).unwrap();
+        let ph = palm_hold(&info, 1, unit).unwrap();
+        let hw = info.rig.rest_world[info.hand[1]];
+        let world_grip = hw.t + hw.rotation().rotate_vec(ph.grip);
+        let hand_head = info.rig.head(info.hand[1]);
+        let palm_vec = info.rig.head(mid[0]) - hand_head;
+        let expected = hand_head
+            + palm_vec.scale(DISTAL_MITTEN_PALM_SHARE)
+            + palm.scale(DISTAL_MITTEN_PALM_OFFSET * unit);
+        assert!(world_grip.approx_eq(expected, 1e-9));
+        let palm_proj = (world_grip - hand_head).dot(palm);
+        assert!((palm_proj - DISTAL_MITTEN_PALM_OFFSET * unit).abs() < 1e-9);
+        assert!((palm_proj - (HANDLE_R + FINGER_R) * unit).abs() > 0.01);
+
+        let curled = fingers(&info, 1, Some(&ph), Some(0.9), unit, &|_| None);
+        assert_eq!(curled.len(), mid.len());
+        let mean_deg: f64 = curled
+            .iter()
+            .map(|&(node, trs)| info.rig.rest[node].r.angle_to(trs.r).to_degrees())
+            .sum::<f64>()
+            / curled.len() as f64;
+        assert!(
+            mean_deg >= 31.5 && mean_deg < 36.0,
+            "distal mitten mean curl should be in 31.5..36 deg, got {mean_deg}"
+        );
     }
 }
