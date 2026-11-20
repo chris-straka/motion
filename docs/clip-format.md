@@ -17,12 +17,18 @@ frame (no sparse tracks in v1).
   "format": "motionforge-clip",
   "version": 1,
   "fps": 30,
-  "skeleton": { "bones": [
-    {"name": "Hips", "parent": null,
-     "head": [0.0, 0.0, 0.98], "tail": [0.0, 0.0, 1.10]}
-  ]},
+  "skeleton": {
+    "bones": [
+      {
+        "name": "Hips",
+        "parent": null,
+        "head": [0.0, 0.0, 0.98],
+        "tail": [0.0, 0.0, 1.1]
+      }
+    ]
+  },
   "frames": [
-    {"Hips": {"loc": [0.0, 0.0, 0.0], "quat": [1.0, 0.0, 0.0, 0.0]}}
+    { "Hips": { "loc": [0.0, 0.0, 0.0], "quat": [1.0, 0.0, 0.0, 0.0] } }
   ]
 }
 ```
@@ -52,9 +58,18 @@ The `skeleton` object of a clip as a standalone file (retarget
 targets, bone-length inputs):
 
 ```json
-{"format": "motionforge-skeleton", "version": 1,
- "bones": [{"name": "DEF-spine", "parent": null,
-            "head": [0,0,1], "tail": [0,0,2]}]}
+{
+  "format": "motionforge-skeleton",
+  "version": 1,
+  "bones": [
+    {
+      "name": "DEF-spine",
+      "parent": null,
+      "head": [0, 0, 1],
+      "tail": [0, 0, 2]
+    }
+  ]
+}
 ```
 
 `motionforge clip-info --emit-skeleton in.json --output skel.json`
@@ -65,14 +80,17 @@ extracts one from a clip.
 Source->target correspondence for `retarget`:
 
 ```json
-{"format": "motionforge-bonemap", "version": 1,
- "pairs": [{"source": "mixamorig:Hips", "target": "DEF-spine"}],
- "root_source": "mixamorig:Hips",
- "root_target": "DEF-spine",
- "stride_source": ["mixamorig:LeftUpLeg", "mixamorig:LeftFoot"],
- "stride_target": ["DEF-thigh.L", "DEF-foot.L"],
- "feet_source": ["mixamorig:LeftFoot", "mixamorig:RightFoot"],
- "feet_target": ["DEF-foot.L", "DEF-foot.R"]}
+{
+  "format": "motionforge-bonemap",
+  "version": 1,
+  "pairs": [{ "source": "mixamorig:Hips", "target": "DEF-spine" }],
+  "root_source": "mixamorig:Hips",
+  "root_target": "DEF-spine",
+  "stride_source": ["mixamorig:LeftUpLeg", "mixamorig:LeftFoot"],
+  "stride_target": ["DEF-thigh.L", "DEF-foot.L"],
+  "feet_source": ["mixamorig:LeftFoot", "mixamorig:RightFoot"],
+  "feet_target": ["DEF-foot.L", "DEF-foot.R"]
+}
 ```
 
 Only `pairs`, `root_source`, `root_target` are required. Without the
@@ -85,8 +103,11 @@ Per-bone key frames for thinned import (from `stylize --keys-out`).
 Indices are clip frame numbers (0-based), ascending:
 
 ```json
-{"format": "motionforge-keys", "version": 1,
- "bones": {"Hips": [0, 47], "LeftUpLeg": [0, 9, 12, 33, 36, 47]}}
+{
+  "format": "motionforge-keys",
+  "version": 1,
+  "bones": { "Hips": [0, 47], "LeftUpLeg": [0, 9, 12, 33, 36, 47] }
+}
 ```
 
 ## Effectors (`motionforge-effectors`)
@@ -109,12 +130,20 @@ Single-frame balance snapshot (stdout of `physics-frame`, parsed by the
 Blender overlay operator):
 
 ```json
-{"format": "motionforge-frame-physics", "version": 1, "frame": 1,
- "com": [0, 0, 0.64], "root": [0, 0, 0.7],
- "feet": {"DEF-foot.L": [0.09, 0, 0.08]},
- "supporters": ["DEF-foot.L", "DEF-foot.R"],
- "support_center": [0, 0, 0.08], "support_radius": 0.21,
- "excursion_m": -0.2, "balanced": true, "airborne": false}
+{
+  "format": "motionforge-frame-physics",
+  "version": 1,
+  "frame": 1,
+  "com": [0, 0, 0.64],
+  "root": [0, 0, 0.7],
+  "feet": { "DEF-foot.L": [0.09, 0, 0.08] },
+  "supporters": ["DEF-foot.L", "DEF-foot.R"],
+  "support_center": [0, 0, 0.08],
+  "support_radius": 0.21,
+  "excursion_m": -0.2,
+  "balanced": true,
+  "airborne": false
+}
 ```
 
 Airborne frames carry `"support_center": null`, empty supporters, and
@@ -125,10 +154,13 @@ Airborne frames carry `"support_center": null`, empty supporters, and
 AutoPose MLP in a small custom format (CPU inference, no runtime):
 
 ```json
-{"format": "motionforge-weights", "version": 1,
- "bones": ["DEF-spine", "..."],
- "input": "effector-pos-mask+lengths/root-relative",
- "layers": [{"weights": [[0.01]], "bias": [0.0]}]}
+{
+  "format": "motionforge-weights",
+  "version": 1,
+  "bones": ["DEF-spine", "..."],
+  "input": "effector-pos-mask+lengths/root-relative",
+  "layers": [{ "weights": [[0.01]], "bias": [0.0] }]
+}
 ```
 
 Input vector: per bone in `bones` order, `[px, py, pz, mask]`

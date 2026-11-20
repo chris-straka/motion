@@ -69,7 +69,7 @@ through standardize/animate/pose-test.
 ## Retarget (fixture golden)
 
 - `motionforge retarget --source walk_src.json --target hero_skel.json
-  --map hero_map.json --output ...`: mapped 12 pairs (2 toe rows
+--map hero_map.json --output ...`: mapped 12 pairs (2 toe rows
   skipped, no source bones), chain root DEF-spine, stride 0.7045, yaw
   flip, root travel 0.8686 m (1.2 x 0.7045 + sway/bob), max swing
   0.2689 rad.
@@ -96,7 +96,7 @@ through standardize/animate/pose-test.
 ## Physics (fixture golden)
 
 - `motionforge physics-check --input jump.json --root DEF-spine --feet
-  ...`: 4 contact / 8 airborne, 0 balance violations (mean -0.2038 m),
+...`: 4 contact / 8 airborne, 0 balance violations (mean -0.2038 m),
   1 ballistic phase residual 0.0000 m, momentum max 900.00 m/s2 flags
   [4,5,6] + 180.0 deg turn at 5.
 - `physics-fix`: max accel 900.00 -> 141.31 m/s2, 7 frames smoothed.
@@ -120,9 +120,9 @@ through standardize/animate/pose-test.
 ## Blender suites
 
 - Pure: 7 tests (`python3 -m unittest discover -s blender/tests -p
-  "test_pure.py"`).
+"test_pure.py"`).
 - Headless: 30/30 checks, exit 0 (`Blender --background
-  --factory-startup --python blender/tests/test_headless.py`), needs a
+--factory-startup --python blender/tests/test_headless.py`), needs a
   built CLI. Gate note: Blender 5.2 exits 0 on uncaught non-SystemExit
   errors (verified), so the script converts escapees to exit 1.
 - Batch P3: synthetic BVH -> clip -> `clip-info` + manifest gate, all
@@ -134,7 +134,7 @@ through standardize/animate/pose-test.
   `test_missing_torch_errors_cleanly` runs a real 1-epoch training
   when torch is installed).
 - Torch modules compile: `python3 -m py_compile
-  python/autopose/model.py python/autopose/train.py`.
+python/autopose/model.py python/autopose/train.py`.
 
 ## Creature motion (2026-10-29, f: RTX 2060 SUPER 8 GB, Blender 5.2.1, torch 2.7.1+cu128)
 
@@ -156,7 +156,7 @@ biped (2 min). Meshes, rigs, renders and weights stay local.
   `creature-project` vs Blender's `world_to_camera_view` on 6 samples x
   2 views x 29 joints: max 0.0001 px.
 - Training renders: `creature-poses --count 3000 --seed 1`, `render.py
-  --mode poses --samples 16`, Eevee: 0.34 s per sample (two 512x512
+--mode poses --samples 16`, Eevee: 0.34 s per sample (two 512x512
   views), 17 min per creature; 3 frames keyed per sample (keying the
   whole 9,000-frame clip was quadratic in Blender).
 - Joint finder, `train.py --epochs 12 --batch 16` on 6,000 view images
@@ -213,14 +213,14 @@ biped (2 min). Meshes, rigs, renders and weights stay local.
   any composite clip). Untried: more steps, higher guidance, a looser
   prompt, the paid models.
 - Lining up the views (2026-11-13, f): known answers by `cargo test
-  --locked --release -p motion_core --test creature_align -- --nocapture`;
+--locked --release -p motion_core --test creature_align -- --nocapture`;
   the Seedance wolf walk by `motionforge creature-solve --creature
-  creature.json --detections walk_det.json --output out.json --report
-  r.json --align-views --align-time auto [--aligned-out a.json]` (and
+creature.json --detections walk_det.json --output out.json --report
+r.json --align-views --align-time auto [--aligned-out a.json]` (and
   `--align-time lag|warp`, `--force` for the residual) and `python3
-  tools/creature_views.py --creature creature.json --detections a.json`.
+tools/creature_views.py --creature creature.json --detections a.json`.
   Feet of a solved clip: `python3 tools/creature_feet.py --creature
-  creature.json clip.json`; renders: `render.py --mode motion` on y8.
+creature.json clip.json`; renders: `render.py --mode motion` on y8.
   Numbers in `docs/creature.md` ("Lining up the views") and
   `docs/log.md`.
 

@@ -22,7 +22,7 @@ and a giant and numbers compare across characters.
   and the ball of the foot (the toe joint). A point's height is how far
   it is above where it stands in the rest pose, so a flat foot is 0
   whatever the ankle's own height. Per frame the lower point is the
-  foot's contact. A foot is *planted* when that point is under **5 cm**
+  foot's contact. A foot is _planted_ when that point is under **5 cm**
   high **and** moving slower than **0.75 m/s** horizontally (central
   difference), so a foot skimming the floor mid-stride is a step, not a
   plant. A plant is a run of 2+ planted frames. Its slide is the
@@ -72,13 +72,13 @@ and a giant and numbers compare across characters.
 - **Readability of the key poses** (2026-11-13; for comparing a clip
   with its own variants, higher is better). Key poses are the body's
   speed minima (the stylizer's own keys, `stylize_body::body_keys`),
-  interior ones only when there are any. *Clear*: per key pose, four
+  interior ones only when there are any. _Clear_: per key pose, four
   level orthographic views round the character's current facing (0, 45,
   90, 135 deg); in each, the share of limb points (elbows, hands, knees,
   ankles) further from the projected hips-chest-head line than the
   torso's half width in that view (half the shoulder width side to
   side, 0.3 of it front to back); the best view counts; mean over key
-  poses. *Contrast*: between successive key poses, the mean angle each
+  poses. _Contrast_: between successive key poses, the mean angle each
   limb segment and the spine turned in the hips' frame. No published
   readability score was found to copy (research notes, 2026-11-13); this
   one is a first cut, to be checked against the owner's picks.
@@ -89,7 +89,7 @@ and a giant and numbers compare across characters.
   belt (the mean of the two medians) times time. Reported as `belt`.
 - **Attacks** (clip names containing attack, slash, cut, combo, stab,
   swing, strike, punch or kick; `--attack-clips` to change): the weapon
-  hand is `--weapon` (default R). The *tip* is the blade's end when the
+  hand is `--weapon` (default R). The _tip_ is the blade's end when the
   rig has a hand socket (the contact pass's blade capsule), else the
   hand. **Peak**: the tip's fastest frame. **Load**: the last frame
   before the peak where the hand still moved against (or across) the
@@ -117,28 +117,28 @@ and a giant and numbers compare across characters.
   (`tracks::held_pose`: grip 4 cm up and 8.5 cm back in the socket, the
   blade cocked off the socket's +Y; `--blade-pose socket` for straight
   out along +Y). The strike's frames are the attack timing's (peak,
-  load, windup start); the *settle* is the first frame after the peak
+  load, windup start); the _settle_ is the first frame after the peak
   with the tip under 15% of its peak speed. Parts:
-  - *body change*: the largest `1 - IoU` of the body alone (no blade)
+  - _body change_: the largest `1 - IoU` of the body alone (no blade)
     against the clip's first frame, from the windup's start to the
-    settle: does the body take part? (*pose change*, reported too, is
+    settle: does the body take part? (_pose change_, reported too, is
     the same with the blade, over load to settle.)
-  - *sweep*: the area the blade covers over load to settle, over the
+  - _sweep_: the area the blade covers over load to settle, over the
     first frame's body area.
-  - *arc*: the tip's screen path over load to settle in body heights,
+  - _arc_: the tip's screen path over load to settle in body heights,
     times its turn consistency (`|sum of signed turns| / sum of turns`,
     each turn weighted by its shorter step; 1 for an arc or a straight
     cut, 0 for a zigzag).
-  - *load hold*: the longest run of frames in the second before the peak
+  - _load hold_: the longest run of frames in the second before the peak
     whose silhouette changes under 4% from the frame before.
-  - *score*: each part over what the readable references reach (body
+  - _score_: each part over what the readable references reach (body
     0.7, sweep 0.8, arc 2.0, hold 4 frames), capped at 1, combined by
     the weakest part; the hold is a bonus of at most a fifth on top
     of that, only as far as the arc reads (idle holds still all clip
     long, and the readable references include attacks with no held
     load, so a hold cannot be required).
-  `--silhouettes DIR` writes each frame's mask as a PGM (body black,
-  blade grey).
+    `--silhouettes DIR` writes each frame's mask as a PGM (body black,
+    blade grey).
 
   Three fixes and a new part (2026-11-15), each because the old
   number disagreed with the pictures:
@@ -175,23 +175,23 @@ and a giant and numbers compare across characters.
 
   **Calibrated on the game's own clips** (2026-11-15;
   `motionforge motion check andras_rig.glb --camera game
-  --no-through --json` on the rig in `~/Games/hlh/player/andras`,
+--no-through --json` on the rig in `~/Games/hlh/player/andras`,
   plus the authored presets on the same rig, and a positive grip
   control on Lysan's rig, whose fingers the authoring tool can
   close; `READ_FULL` unchanged — the new parts still reach them):
 
-  | clip | read | body | sweep | arc | grip (handle / curl) |
-  |---|---|---|---|---|---|
-  | quirin-attack_2 | 0.72 | 0.63 | 0.82 | 2.83 | 0 (18.7 cm / 0 deg) |
-  | authored sweep | 0.49 | 0.64 | 0.44 | 2.29 | 0 (18.7 cm / 0 deg) |
-  | authored cleave / backcut | 0.43 / 0.42 | 0.75 / 0.69 | 0.39 / 0.37 | 1.82 / 1.74 | 0 (18.7 cm / 0 deg) |
-  | attack_3 / attack_2 / attack_1 | 0.33 / 0.31 / 0.30 | 0.39 / 0.27 / 0.26 | 0.33 / 0.45 / 0.37 | 1.96 / 1.67 / 1.28 | 0 (18.7 cm / 0 deg) |
-  | enemy-attack_3 | 0.15 | 0.33 | 0.25 | 0.37 | 0 (18.7 cm / 0 deg) |
-  | authored thrust | 0.03 | 0.60 | 0.13 | 0.08 | 0 (18.7 cm / 0 deg) |
-  | idle | 0.01 | 0.06 | 0.01 | 0.03 | 0 (18.7 cm / 0 deg) |
-  | Lysan authored sweep (socket pose) | 0.55 | 0.71 | 0.49 | 2.29 | **0.97 (3.8 cm / 34 deg)** |
-  | the same, fingers left open | 0.55 | 0.71 | 0.49 | 2.29 | **0.34 (3.8 cm / 12 deg)** |
-  | the same, blade in the game's pose | 0.56 | 0.71 | 0.50 | 2.46 | **0 (12.1 cm / 34 deg)** |
+  | clip                               | read               | body               | sweep              | arc                | grip (handle / curl)       |
+  | ---------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | -------------------------- |
+  | quirin-attack_2                    | 0.72               | 0.63               | 0.82               | 2.83               | 0 (18.7 cm / 0 deg)        |
+  | authored sweep                     | 0.49               | 0.64               | 0.44               | 2.29               | 0 (18.7 cm / 0 deg)        |
+  | authored cleave / backcut          | 0.43 / 0.42        | 0.75 / 0.69        | 0.39 / 0.37        | 1.82 / 1.74        | 0 (18.7 cm / 0 deg)        |
+  | attack_3 / attack_2 / attack_1     | 0.33 / 0.31 / 0.30 | 0.39 / 0.27 / 0.26 | 0.33 / 0.45 / 0.37 | 1.96 / 1.67 / 1.28 | 0 (18.7 cm / 0 deg)        |
+  | enemy-attack_3                     | 0.15               | 0.33               | 0.25               | 0.37               | 0 (18.7 cm / 0 deg)        |
+  | authored thrust                    | 0.03               | 0.60               | 0.13               | 0.08               | 0 (18.7 cm / 0 deg)        |
+  | idle                               | 0.01               | 0.06               | 0.01               | 0.03               | 0 (18.7 cm / 0 deg)        |
+  | Lysan authored sweep (socket pose) | 0.55               | 0.71               | 0.49               | 2.29               | **0.97 (3.8 cm / 34 deg)** |
+  | the same, fingers left open        | 0.55               | 0.71               | 0.49               | 2.29               | **0.34 (3.8 cm / 12 deg)** |
+  | the same, blade in the game's pose | 0.56               | 0.71               | 0.50               | 2.46               | **0 (12.1 cm / 34 deg)**   |
 
   Read: the ordering the owner gave holds (the authored and Quirin
   attacks over Andras's, over idle), and every sword clip on
@@ -226,7 +226,7 @@ and a giant and numbers compare across characters.
     `single_finger_axes` derives the palm from the hand's geometry.
   - `attack::Solver::place_hand` gained a damped fixed-point pass for an
     elbow/wrist 2-cycle, `PALM_WRIST_MAX_DEG = 35 deg` and `FOREARM_ROLL_DEG
-    = 105 deg`. The "~83 deg wrist" it is said to remove: not measured.
+= 105 deg`. The "~83 deg wrist" it is said to remove: not measured.
 
   **2026-11-18 (the measure restored)**: the 2026-11-16 change also moved
   the grip measure to the solver's own `0.55` palm point and lowered the
@@ -238,13 +238,13 @@ and a giant and numbers compare across characters.
   Measured with the restored measure (fleet job `y45x3xbz`, on z, the
   game's rigs at its commit `bd3610cd`; `motionforge attack --preset all`, then
   `motionforge motion check --camera game --blade-pose socket
-  --no-through --json`; the control's rig through `standardize`
+--no-through --json`; the control's rig through `standardize`
   and `socket` first):
 
-  | rig | grip | sweep / cleave / backcut / thrust overall |
-  |---|---|---|
-  | single-finger hero | 0.345 (handle 9.1 cm from the finger root, 26 deg) | 0.345 / 0.345 / 0.345 / 0.172 |
-  | five-finger control | 0.966 (3.8 cm, 33.8 deg) | 0.479 / 0.484 / 0.488 / 0.165 |
+  | rig                 | grip                                               | sweep / cleave / backcut / thrust overall |
+  | ------------------- | -------------------------------------------------- | ----------------------------------------- |
+  | single-finger hero  | 0.345 (handle 9.1 cm from the finger root, 26 deg) | 0.345 / 0.345 / 0.345 / 0.172             |
+  | five-finger control | 0.966 (3.8 cm, 33.8 deg)                           | 0.479 / 0.484 / 0.488 / 0.165             |
 
   The hero's hand now closes round the handle (it was `0`, 18.7 cm, no
   finger turn) but the measure still fails it: the handle sits 9.1 cm
@@ -296,7 +296,6 @@ its limit (and bent 100 or 90 deg the natural way, none); a hand turned
 100 deg is 10 past; both feet pushed back together at 0.6 m/s under
 still hips is a 0.6 m/s belt with no skate; a held T-pose is fully
 clear with zero contrast.
-
 
 `rust/core/tests/motion_check.rs`, on the procedural fixture humanoid:
 
@@ -370,13 +369,13 @@ check: `motionforge motion check <hero rig>.glb`. Frame strips of the
 three worst of each measure: `tools/bench/motion_sheet.py strip`
 (kept outside the repo with the game's files).
 
-| measure | worst three | what the strips show |
-|---|---|---|
-| skate | dodge, land, sf_idle (100% of frames) | sf_idle stands sunk to the waist (below); land and dodge drift 7-14 cm over a plant, too small to see at strip scale |
-| ground | sf_cut_left 93 cm, sf_cut_right 89, sf_sheathe 88 (all 7 `sf_*` clips 86-93 cm) | real: these clips put the hips about 1 m lower than every other clip (hips local y about -1.0 under a root at +1.0), so the body is in the floor to the waist |
-| floating | the enemy's death 41 cm, a second swordsman's death 29 and third attack 23 (every frame of all ten of those two characters' clips) | `worst_float.png`: the retargeted Mixamo clips hold the feet 7-23 cm up; the shadows sit off the feet, consistent with that, but at strip scale not unmistakable |
-| through the body | attack_1, attack_2, hit, idle: every frame, 3-5 cm | `worst_through_standing.png`: real (the hand sinks into the belly in hit, the forearm cuts across the chest in attack_1 frame 12 and attack_2 frames 5-6); the sunk `sf_*` clips also score 100% at 13-14 cm, where the strips show little but a torso in the floor |
-| jerk | twirl 8,700, attack_1 3,650, attack_2 3,150 m/s^3 (arm.R mean) | fast moves, not noise: the twirl is a spin and the attacks are keyed at 24 fps with sharp corners in the hand's path (visible in the trail) |
+| measure          | worst three                                                                                                                        | what the strips show                                                                                                                                                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| skate            | dodge, land, sf_idle (100% of frames)                                                                                              | sf_idle stands sunk to the waist (below); land and dodge drift 7-14 cm over a plant, too small to see at strip scale                                                                                                                                                |
+| ground           | sf_cut_left 93 cm, sf_cut_right 89, sf_sheathe 88 (all 7 `sf_*` clips 86-93 cm)                                                    | real: these clips put the hips about 1 m lower than every other clip (hips local y about -1.0 under a root at +1.0), so the body is in the floor to the waist                                                                                                       |
+| floating         | the enemy's death 41 cm, a second swordsman's death 29 and third attack 23 (every frame of all ten of those two characters' clips) | `worst_float.png`: the retargeted Mixamo clips hold the feet 7-23 cm up; the shadows sit off the feet, consistent with that, but at strip scale not unmistakable                                                                                                    |
+| through the body | attack_1, attack_2, hit, idle: every frame, 3-5 cm                                                                                 | `worst_through_standing.png`: real (the hand sinks into the belly in hit, the forearm cuts across the chest in attack_1 frame 12 and attack_2 frames 5-6); the sunk `sf_*` clips also score 100% at 13-14 cm, where the strips show little but a torso in the floor |
+| jerk             | twirl 8,700, attack_1 3,650, attack_2 3,150 m/s^3 (arm.R mean)                                                                     | fast moves, not noise: the twirl is a spin and the attacks are keyed at 24 fps with sharp corners in the hand's path (visible in the trail)                                                                                                                         |
 
 Where the numbers mislead:
 
@@ -392,5 +391,15 @@ Where the numbers mislead:
 - **Ground and through-body interact**: a clip sunk into the floor puts
   the arms "inside" the thigh and hip mesh too.
 
+## Skin-based sword grip (`--camera game --blade-pose socket`, 2026-11-19)
+
+Since commit `153822d` (`motion-1`), `readcam::skin_grip_of` reads grip
+directly from the posed hand and finger skinned mesh (`palm_surface_m`,
+`skin_wrap`, `skin_based`) rather than a bone-length ratio, using deterministic
+`detmath::acos`. Verified by `tools/bench/grip_gate.sh` (fleet job `yhsgagzp`
+after `motion-4` commit `b296634`): single-finger hero rig **`0.972`** on all
+four attack presets (`cleave`/`backcut`/`sweep`/`thrust`), five-finger control
+**`0.966`**, and all 6 planted bad cases (open hand, fingertip socket, 10 cm
+offset handle) **`0.000`**.
 
 Attacks authored to these measures: `docs/attack.md`.

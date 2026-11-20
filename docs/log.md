@@ -23,15 +23,15 @@ copied outside this repo; never committed). Scores: `motion check
 - **`motionforge clean`** (ground, lifts, plant lock; `docs/clean.md`),
   also `animate --clean`. Final, on the 31 clips (`motion_compare.py`):
 
-  | measure (sum over clips) | base | clean |
-  |---|---|---|
-  | skate cm | 344.5 | 188.4 |
-  | sink cm (deepest per clip) | 710.6 | 0.0 |
-  | floating frames | 826 | 93 |
-  | through-body frames | 894 | 895 |
-  | back-and-forth mm | 37.9 | 39.7 |
-  | joint-limit frames | 243 | 245 |
-  | key-pose contrast deg (mean) | 33.8 | 33.9 |
+  | measure (sum over clips)     | base  | clean |
+  | ---------------------------- | ----- | ----- |
+  | skate cm                     | 344.5 | 188.4 |
+  | sink cm (deepest per clip)   | 710.6 | 0.0   |
+  | floating frames              | 826   | 93    |
+  | through-body frames          | 894   | 895   |
+  | back-and-forth mm            | 37.9  | 39.7  |
+  | joint-limit frames           | 243   | 245   |
+  | key-pose contrast deg (mean) | 33.8  | 33.9  |
 
   What is left of skate is the two long deaths' slides (falls past the
   35 cm lock cap: enemy-death 71 cm, quirin-death 78 cm; they floated
@@ -63,6 +63,7 @@ copied outside this repo; never committed). Scores: `motion check
     away most locks (sf_cough's feet drift 33 cm while standing): set
     skate 17 -> 185 cm. Cap raised to 35 cm: only the two deaths' long
     slides are left.
+
 - **Treadmill detection** in `motion check` needs every foot to agree
   (a single foot skimming the floor next to a standing one was read as
   a belt) and the cycle to loop (each foot back under the hips; the
@@ -87,12 +88,12 @@ Goal: smooth enough to be on by default in `clean`. Judged on the 31
 clips, `clean --contact` against `clean` without it (base re-scored with
 the round-2 treadmill: skate 355.8).
 
-| measure (sum) | clean | contact, round 1 | + anatomical hinge IK | + rate limit | + free hand | + 0.3 s ramp | + shallow free-arm floor |
-|---|---|---|---|---|---|---|---|
-| through-body frames | 895 | 184 | 184 | 231 | 140 | 114 | 229 |
-| through-body cm (deepest) | 238.0 | 81.1 | 81.1 | 99.3 | 91.6 | 65.9 | 80.1 |
-| back-and-forth mm | 39.9 | 94.2 | 94.2 | 62.1 | 62.3 | 55.4 | 55.5 |
-| joint-limit frames | 245 | 521 | 521 | 509 | 301 | 291 | 291 |
+| measure (sum)             | clean | contact, round 1 | + anatomical hinge IK | + rate limit | + free hand | + 0.3 s ramp | + shallow free-arm floor |
+| ------------------------- | ----- | ---------------- | --------------------- | ------------ | ----------- | ------------ | ------------------------ |
+| through-body frames       | 895   | 184              | 184                   | 231          | 140         | 114          | 229                      |
+| through-body cm (deepest) | 238.0 | 81.1             | 81.1                  | 99.3         | 91.6        | 65.9         | 80.1                     |
+| back-and-forth mm         | 39.9  | 94.2             | 94.2                  | 62.1         | 62.3        | 55.4         | 55.5                     |
+| joint-limit frames        | 245   | 521              | 521                   | 509          | 301         | 291          | 291                      |
 
 ### Kept
 
@@ -142,14 +143,14 @@ mode (`--snap-speed 0 --accent none`) and with this round's (the sword
 hand's stops are keys too; exaggeration scaled by `6 m/s / hand peak`,
 x0.41-0.94 on these clips).
 
-| measure (sum over 11 clips) | original | round 1 | round 2 |
-|---|---|---|---|
-| skate cm | 4.6 | 50.0 | 39.7 |
-| floating frames | 8 | 55 | 35 |
-| through-body frames | 361 | 426 | 419 |
-| back-and-forth mm | 9.3 | 236.4 | 200.0 |
-| joint-limit frames | 32 | 197 | 180 |
-| key-pose contrast deg (mean) | 45.2 | 46.3 | 44.9 |
+| measure (sum over 11 clips)  | original | round 1 | round 2 |
+| ---------------------------- | -------- | ------- | ------- |
+| skate cm                     | 4.6      | 50.0    | 39.7    |
+| floating frames              | 8        | 55      | 35      |
+| through-body frames          | 361      | 426     | 419     |
+| back-and-forth mm            | 9.3      | 236.4   | 200.0   |
+| joint-limit frames           | 32       | 197     | 180     |
+| key-pose contrast deg (mean) | 45.2     | 46.3    | 44.9    |
 
 attack_1's windup by the numbers: 0.13 s original, 0.03 round 1, 0.23
 round 2. By eye (painted reel with the hand's path, `attack_1_stylized`):
@@ -179,13 +180,13 @@ source's own windup, so the arm wound up twice. Two fixes, each on the
 eleven attack clips:
 
 | measure (sum over 11 clips) | original | round 2 | no counter on a source windup | + the strike's load is a key |
-|---|---|---|---|---|
-| skate cm | 4.6 | 39.7 | 30.1 | 34.4 |
-| floating frames | 8 | 35 | 30 | 38 |
-| through-body frames | 361 | 419 | 408 | 408 |
-| back-and-forth mm | 9.3 | 200.0 | 180.3 | 133.5 |
-| joint-limit frames | 32 | 180 | 152 | 159 |
-| joint-limit worst deg | 43.1 | 274.4 | 182.3 | 174.2 |
+| --------------------------- | -------- | ------- | ----------------------------- | ---------------------------- |
+| skate cm                    | 4.6      | 39.7    | 30.1                          | 34.4                         |
+| floating frames             | 8        | 35      | 30                            | 38                           |
+| through-body frames         | 361      | 419     | 408                           | 408                          |
+| back-and-forth mm           | 9.3      | 200.0   | 180.3                         | 133.5                        |
+| joint-limit frames          | 32       | 180     | 152                           | 159                          |
+| joint-limit worst deg       | 43.1     | 274.4   | 182.3                         | 174.2                        |
 
 - No counter pose when the segment before a strike already moved the
   weapon hand against it by 30%+ of the strike.
@@ -241,20 +242,20 @@ Also: the held load counts only as far as an arc follows it (idle and
 other still clips "held" all clip long), and turns on the tip path are
 weighted by step length (slow jitter at the ends is not a wiggle).
 
-| clip | read | body | sweep | arc | held load |
-|---|---|---|---|---|---|
-| CC0 Sword_Attack (reference) | 0.58 | 0.69 | 0.55 | 1.30 | 0 |
-| CC0 Sword_Regular_B | 0.54 | 0.56 | 0.34 | 1.82 | 0 |
-| quirin-attack_2 | 0.66 | 0.87 | 0.51 | 2.15 | 0 |
-| quirin-attack_3 | 0.62 | 0.55 | 0.80 | 1.43 | 0 |
-| quirin-attack_1 | 0.60 | 0.71 | 0.65 | 0.96 | 1 |
-| enemy-attack_2 | 0.59 | 0.69 | 0.47 | 1.62 | 0 |
-| attack_3 | 0.49 | 0.40 | 0.35 | 1.93 | 0 |
-| attack_2 | 0.48 | 0.31 | 0.52 | 1.66 | 0 |
-| attack_1 | 0.42 | 0.29 | 0.38 | 1.59 | 0 |
-| enemy-attack_1 | 0.41 | 0.54 | 0.36 | 0.86 | 0 |
-| enemy-attack_3 | 0.31 | 0.37 | 0.38 | 0.36 | 1 |
-| idle | 0.04 | 0.07 | 0.01 | 0.03 | (28, not counted) |
+| clip                         | read | body | sweep | arc  | held load         |
+| ---------------------------- | ---- | ---- | ----- | ---- | ----------------- |
+| CC0 Sword_Attack (reference) | 0.58 | 0.69 | 0.55  | 1.30 | 0                 |
+| CC0 Sword_Regular_B          | 0.54 | 0.56 | 0.34  | 1.82 | 0                 |
+| quirin-attack_2              | 0.66 | 0.87 | 0.51  | 2.15 | 0                 |
+| quirin-attack_3              | 0.62 | 0.55 | 0.80  | 1.43 | 0                 |
+| quirin-attack_1              | 0.60 | 0.71 | 0.65  | 0.96 | 1                 |
+| enemy-attack_2               | 0.59 | 0.69 | 0.47  | 1.62 | 0                 |
+| attack_3                     | 0.49 | 0.40 | 0.35  | 1.93 | 0                 |
+| attack_2                     | 0.48 | 0.31 | 0.52  | 1.66 | 0                 |
+| attack_1                     | 0.42 | 0.29 | 0.38  | 1.59 | 0                 |
+| enemy-attack_1               | 0.41 | 0.54 | 0.36  | 0.86 | 0                 |
+| enemy-attack_3               | 0.31 | 0.37 | 0.38  | 0.36 | 1                 |
+| idle                         | 0.04 | 0.07 | 0.01  | 0.03 | (28, not counted) |
 
 Command: `motionforge motion check <grafted>.glb --camera game --json`
 (and the same on the CC0 Quaternius UAL clips put on the same body).
@@ -275,12 +276,12 @@ Built for it, in `creature::align` (`docs/creature.md`, "Lining up the
 views"), each judged on known answers first
 (`rust/core/tests/creature_align.rs`) and then on the clip:
 
-| piece | known answer | the wolf clip | verdict |
-|---|---|---|---|
-| camera fit on frame 0 (`--align-views`) | zoom 1.25 / 0.9 and shifts recovered within 0.3% and 0.13 px; gap 14.7% -> 0.36% | zoom 1.195 front, 1.249 side (its halves were read at 640 px for 512 px views); gap 4.69% -> 2.67%; forced-solve residual 112 -> 13 mm, limited bone-frames 369 -> 120 | **kept**; use it on every generated clip |
-| constant lag (`--align-time lag`) | 5 frames late: found 5.06, ratio 0.602 -> 0.019 | best lag -0.38 frames, ratio 1.164 -> 1.143 | **kept** (wins where a view is late; this clip isn't) |
-| warp (`--align-time warp`, chosen by `auto` only when 10% better than the lag) | 8% slow view: warp 0.033 vs lag 0.080, chosen | 1.049 (lag -3.0..3.4), not 10% better | **kept** (wins on a drifting view) |
-| frame timing (`times`, detect.py via ffprobe) | every fifth frame dropped: resampled to 50, within 6 px | timestamps uniform, nothing to do | **kept** |
+| piece                                                                          | known answer                                                                     | the wolf clip                                                                                                                                                          | verdict                                               |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| camera fit on frame 0 (`--align-views`)                                        | zoom 1.25 / 0.9 and shifts recovered within 0.3% and 0.13 px; gap 14.7% -> 0.36% | zoom 1.195 front, 1.249 side (its halves were read at 640 px for 512 px views); gap 4.69% -> 2.67%; forced-solve residual 112 -> 13 mm, limited bone-frames 369 -> 120 | **kept**; use it on every generated clip              |
+| constant lag (`--align-time lag`)                                              | 5 frames late: found 5.06, ratio 0.602 -> 0.019                                  | best lag -0.38 frames, ratio 1.164 -> 1.143                                                                                                                            | **kept** (wins where a view is late; this clip isn't) |
+| warp (`--align-time warp`, chosen by `auto` only when 10% better than the lag) | 8% slow view: warp 0.033 vs lag 0.080, chosen                                    | 1.049 (lag -3.0..3.4), not 10% better                                                                                                                                  | **kept** (wins on a drifting view)                    |
+| frame timing (`times`, detect.py via ffprobe)                                  | every fifth frame dropped: resampled to 50, within 6 px                          | timestamps uniform, nothing to do                                                                                                                                      | **kept**                                              |
 
 The forced solve with the fit, rendered on the wolf beside the video,
 stands on the floor (lowest foot joint 11-30 mm, rest 22-26) and steps
@@ -346,11 +347,11 @@ only inside a run of flips (the frame before or after flips too). Test: a
 0.6 rad two-frame snap keeps under 3% of its travel (it was about half);
 the +-0.02 rad jitter and the even swing keep their known answers.
 
-| back-and-forth mm, worst chain mean (11 attack clips) | before | after |
-|---|---|---|
-| originals, sum | 9.3 | 1.9 (attack_3 2.78 -> 0.13: all snaps) |
-| round-2 stylized, sum | 200.0 | 149.8 |
-| round-3 stylized, sum | 133.5 | 109.1 |
+| back-and-forth mm, worst chain mean (11 attack clips) | before | after                                  |
+| ----------------------------------------------------- | ------ | -------------------------------------- |
+| originals, sum                                        | 9.3    | 1.9 (attack_3 2.78 -> 0.13: all snaps) |
+| round-2 stylized, sum                                 | 200.0  | 149.8                                  |
+| round-3 stylized, sum                                 | 133.5  | 109.1                                  |
 
 The round-2 stylized attack_1's zigzag (743 mm peak at frame 8, seen in
 the frames) still counts in full.
@@ -475,7 +476,7 @@ vs ours (`blade_track.py`, scratch).
 - My reference was wrong first: Blender's exporter wrote the X Bot's
   bone-parented socket 90 deg off its own knuckle line, which read as
   "ours is 112 deg off". Sockets on references now come from `motionforge
-  socket`, never from Blender.
+socket`, never from Blender.
 - The default contact pass keeps the sword path (0 deg change on two
   clips, 16 deg only on the first and last frames of Inward Slashing)
   and halves foot sliding: skate 17.3 -> 9.4, 21.2 -> 16.3, 26.4 -> 9.5
@@ -528,7 +529,7 @@ Andras and scored as in round 7.
   blade ahead at full reach (best 0.37; a thrust is 1). The arm reaches
   with a neutral wrist, so a hammer grip points the blade up: the model
   doesn't know a sword is in the hand. `motionforge attack --preset
-  thrust`: blade 0.99 ahead at 0.40 m reach, feet 3.8 cm, nothing
+thrust`: blade 0.99 ahead at 0.40 m reach, feet 3.8 cm, nothing
   through the body.
 
 ## 2026-11-14, round 9: twelve more Mixamo clips, the thrust, a sword set
@@ -603,9 +604,9 @@ fallback (`18.7 cm` off the knuckle, `0 deg` finger curl).
   segment and aligns hand roll on single-finger targets against
   five-finger sources.
 - Measured on the single-finger hero rig in the owner's corpus (`motion
-  check --camera game --blade-pose socket --no-through`): grip `0 (18.7
-  cm, 0 deg)` -> `1.00 (2.6 cm, 47.3 deg)`; authored `sweep / cleave /
-  backcut` overall `0.00 -> 0.50 / 0.43 / 0.41`; five-finger positive
+check --camera game --blade-pose socket --no-through`): grip `0 (18.7
+cm, 0 deg)` -> `1.00 (2.6 cm, 47.3 deg)`; authored `sweep / cleave /
+backcut` overall `0.00 -> 0.50 / 0.43 / 0.41`; five-finger positive
   control unchanged (`0.97`, `3.8 cm, 33.8 deg`).
 
 ## 2026-11-18: the grip measure has its own constants again
@@ -622,7 +623,7 @@ is back at 1e-9.
 
 - Measured (fleet job `y45x3xbz` on z, the game's
   rigs at its commit `bd3610cd`: `motionforge attack --preset all`, then `motionforge
-  motion check --camera game --blade-pose socket --no-through --json`):
+motion check --camera game --blade-pose socket --no-through --json`):
   single-finger hero grip `0.345` (handle 9.1 cm, curl 26 deg), overall
   sweep / cleave / backcut / thrust `0.345 / 0.345 / 0.345 / 0.172`;
   five-finger control grip `0.966` (3.8 cm, 33.8 deg), overall
@@ -640,3 +641,64 @@ is back at 1e-9.
   camera, and a check of `FOREARM_ROLL_DEG = 105` on a rig without twist
   bones.
 
+## 2026-11-19: skin grip, CI green, forearm 80 deg, width refit, Mixamo held-out bench, giant pass, non-quadruped walks, code-health & licensing gate
+
+All items landed under gate-first verification (`gates/motion-*/gate.sh`) and
+green GitHub Actions CI (`rust` Linux + macOS, `blender`, `python`):
+
+- **Skin-based grip measure (`motion-1`, `153822d`)**: `readcam::skin_grip_of`
+  measures `palm_surface_m` and `skin_wrap` directly from posed hand/palm
+  skinned triangles (`detmath::acos`, zero platform libm). Verified via
+  `tools/bench/grip_gate.sh` (fleet job `ab7wm56f`).
+- **Two red tests made honest (`motion-2`, `6d1d261`, CI `44644031463`)**:
+  replaced `math::shortest_arc`'s deadzone in `attack/ik.rs` with algebraic
+  `exact_shortest_arc` + `rot_about_axis` so `attack.rs`'s `1e-9` grip limit
+  passes cleanly without loosening tolerances, and rewrote the mitten test
+  against `motion-1`'s skin measure (`readcam.rs`).
+- **Guarded gate (`motion-3`, `015c9de`, CI `44648486974`)**: added
+  `tools/gate/carbon.sh` guarding tests, fixtures, `readcam.rs`,
+  `motioncheck.rs`, `tools/bench/`, and `tools/gate/`, proven 11/11 by
+  `tools/gate/planted.sh` (fleet job `xe3uhzr2`).
+- **Hero hand closed on hilt (`motion-4`, `b296634`, CI `44646728455`)**:
+  seated distal-mitten palm pocket (`DISTAL_MITTEN_PALM_OFFSET = 0.008`,
+  `DISTAL_MITTEN_CURL = 0.72`). `tools/bench/grip_gate.sh` (fleet job
+  `yhsgagzp`): single-finger hero **`0.972`** across all 4 attack presets
+  (`palm 1.4 cm`, `wrap 100%`, `curl 34.0 deg`), five-finger control
+  **`0.966`** unchanged, all 6 planted bad cases `0.000`.
+- **Forearm roll 80 deg restored (`motion-6`, `335da4b`, CI `44650431195`)**:
+  `weights check --motion` across all 4 attack presets (fleet job `q4zkw4ju`)
+  proved `105 deg` increased twistless forearm `D_VOLUME` candy-wrapping by
+  `+79%` (`84.7 -> 151.4 cm^2`); restored `FOREARM_ROLL_DEG = 80.0` in
+  `attack/mod.rs`.
+- **Width-first retarget + extended contact pass (`motion-13`, `8413c42`, CI
+  `44659217781`)**: added `rust/core/src/width_refit.rs` and extended
+  `rust/core/src/contact.rs` (shins, upper arms, arm-vs-arm with free-hand
+  weapon priority, per-frame `SourceSlack`), wired into `animate --refit-width`
+  (default on). Verified on real game rigs (`fleet 8rygzvnw`): hero
+  `through_cm2 -42%`, five-finger control `-82%`, `forearm_cm2 = 0.0`.
+- **Pro bench Mixamo held-out + planted bad-clip self-test (`motion-8`,
+  `b2270cd` / `4a3969b` / `3cf2c1e`, CI `44668865968`)**: added `--lib`,
+  `--heldout`, `pro_bench.py planted`, removed `--on f`, and ran dev (UAL1+UAL2,
+  84 clips) + held-out Mixamo (9 clips) via fleet job `js23pxq6` (committed in
+  `docs/pro-bench.md` alongside `5je56jqj`).
+- **Giant pass (`motion-7`, `42f6a74`, CI `44672704317`)**: added
+  `rust/core/src/giant.rs` + CLI `motionforge giant --scale k` (Froude timing
+  `sqrt(k)`, uniform rig/root scaling `k`, anticipation/hit-stop/settle,
+  `animations[i].extras.motionforge_giant` events, and `--mask arms-only
+--pin-pelvis`). Clean-checkout fleet audit `xxzx4eja`.
+- **Non-quadruped creature walks (`motion-9`, `8add1aa`, CI `44675438505`)**:
+  added `anybody::walk_stride` + `motionforge creature-clips --clips
+idle,walk,attack` for two-legged upright/hunched monsters (planted feet,
+  `skate <= 2.5 cm`, zero double-airborne frames, counter-swinging arms) and
+  legless creatures (traveling head-to-tail sinusoidal S-wave). Clean-checkout
+  fleet audit `q7fh2jub`.
+- **Code-health sweep (`motion-12`, `ee69089`, fleet audit `mj9necpq`)**:
+  single `is_distal_mitten` predicate in `attack/grip.rs`, `f64::total_cmp`
+  across all unguarded Rust sorts, `helpers::owner_of` replacing `contact.rs`'s
+  `DEF-forearm_twist` special case, and cached `helpers::Drivers::for_rig`
+  avoiding per-frame `humanoid::map_rig`.
+- **Video-model licensing terms & manifest source gate (`motion-11`,
+  `fe72a84`)**: documented Veo/Omni, Seedance, Kling, and MiniMax terms (URL,
+  date `2026-11-19`, training & shipping verdicts) in `docs/licensing.md` and
+  updated `tools/manifest.py --check` to reject any clip whose `source` has no
+  row in `docs/licensing.md`.

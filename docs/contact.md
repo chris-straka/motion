@@ -93,14 +93,14 @@ M4 (clustered winding numbers: far triangle clusters count by their
 area vector, Barill et al. 2018; 15.4 s with every triangle exact, same
 results).
 
-| clip | arm | frames inside | deepest | after | wrist moved |
-|---|---|---|---|---|---|
-| attack_1 | L | 7 | 11.0 cm | 0 | 11.9 cm |
-| attack_2 | R | 2 | 6.6 cm | 1 (2.0 cm) | 23.9 cm, blade 32 deg |
-| attack_3 | R | 27 | 7.5 cm | 0 | 23.9 cm |
-| idle | R | 76 | 8.3 cm | 0 | 10.1 cm |
-| walk | R | 32 | 12.1 cm | 0 | 13.5 cm |
-| hit | R | 11 | 12.3 cm | 0 | 14.4 cm |
+| clip     | arm | frames inside | deepest | after      | wrist moved           |
+| -------- | --- | ------------- | ------- | ---------- | --------------------- |
+| attack_1 | L   | 7             | 11.0 cm | 0          | 11.9 cm               |
+| attack_2 | R   | 2             | 6.6 cm  | 1 (2.0 cm) | 23.9 cm, blade 32 deg |
+| attack_3 | R   | 27            | 7.5 cm  | 0          | 23.9 cm               |
+| idle     | R   | 76            | 8.3 cm  | 0          | 10.1 cm               |
+| walk     | R   | 32            | 12.1 cm | 0          | 13.5 cm               |
+| hit      | R   | 11            | 12.3 cm | 0          | 14.4 cm               |
 
 (full list in `RESULT.json`). The library's slim mannequin arms hang
 inside the hero's hips; the pass opens them about 10 cm.

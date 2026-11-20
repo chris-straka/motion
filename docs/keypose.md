@@ -101,13 +101,13 @@ a fixture rig (twisted rest frames, A-pose) posed by hand (turned hips,
 leaning chest, turned head, arms bent 70 and 30 degrees, a knee up),
 drawn front and side as exact landmarks, fused and fitted back:
 
-| views | MediaPipe depth off by | limbs worst | torso/hip/shoulder lines worst | head |
-|---|---|---|---|---|
-| front + side | 0 | 0.00 deg | 0.54 deg | 0.00 deg |
-| front + side | 5 cm | 0.85 | 1.33 | 1.79 |
-| front + side | 15 cm | 2.64 | 3.88 | 5.50 |
-| front only | 0 | 0.00 | 0.54 | 0.00 |
-| front only | 5 cm | 12.98 | 29.02 | 20.65 |
+| views        | MediaPipe depth off by | limbs worst | torso/hip/shoulder lines worst | head     |
+| ------------ | ---------------------- | ----------- | ------------------------------ | -------- |
+| front + side | 0                      | 0.00 deg    | 0.54 deg                       | 0.00 deg |
+| front + side | 5 cm                   | 0.85        | 1.33                           | 1.79     |
+| front + side | 15 cm                  | 2.64        | 3.88                           | 5.50     |
+| front only   | 0                      | 0.00        | 0.54                           | 0.00     |
+| front only   | 5 cm                   | 12.98       | 29.02                          | 20.65    |
 
 Two views carry a bad depth guess; one view leans on it.
 
@@ -117,11 +117,11 @@ pictures, mean distance from MediaPipe's landmarks as a share of the
 figure's height (report `overlay.mean_err_share`; the pictures:
 `bench/keypose/kp_cut_*_overlay.png`):
 
-| key | cut right front / side | cut left front / side |
-|---|---|---|
-| load | 6.8% / 18.3% | 4.5% / 4.4% |
-| strike | 9.1% / 12.1% | 7.0% / 6.6% |
-| follow | 9.0% / 21.7% | 6.8% / 23.6% |
+| key    | cut right front / side | cut left front / side |
+| ------ | ---------------------- | --------------------- |
+| load   | 6.8% / 18.3%           | 4.5% / 4.4%           |
+| strike | 9.1% / 12.1%           | 7.0% / 6.6%           |
+| follow | 9.0% / 21.7%           | 6.8% / 23.6%          |
 
 The large side numbers are the keys whose legs were given the strike's
 leg order (the drawings swap which foot is in front between figures:
@@ -132,18 +132,18 @@ within 7.8 cm (cut left strike), else 0.
 
 `motion check --camera game` on Andras's rig (2 m), the keypose clips
 beside the game's attacks and the Kimodo clips made from the same
-drawings (`bench/keypose/motion_check.txt`). *read* is the game-camera
+drawings (`bench/keypose/motion_check.txt`). _read_ is the game-camera
 read score (`docs/motion-check.md`: body change, blade sweep, tip arc,
 held load against readable references, 0..1):
 
-| clip | frames | skate | sink | through body | limits | windup / strike / hold | tip peak | read (body / sweep / arc) |
-|---|---|---|---|---|---|---|---|---|
-| kp_cut_right | 36 | 0% | 0 cm | 20 fr, 10.2 cm | 4 fr, worst 5 deg | 0.20 s / 0.10 s / 1 fr | 48.3 m/s | **0.53** (0.79 / 0.19 / 1.79) |
-| kp_cut_left | 36 | 0% | 0 cm | 23 fr, 8.3 cm | 1 fr, worst 1 deg | 0.23 s / 0.10 s / 10 fr | 41.6 m/s | **0.43** (0.84 / 0.13 / 1.12) |
-| attack_1 | 21 | 86% | 4.8 cm | 21 fr, 4.4 cm | 0 | 0.13 s / 0.10 s / 3 fr | 40.6 m/s | 0.37 (0.26 / 0.37 / 1.28) |
-| attack_3 | 26 | 88% | 10.8 cm | 4 fr, 2.2 cm | 0 | 0.13 s / 0.10 s / 14 fr | 45.5 m/s | 0.49 (0.39 / 0.33 / 1.96) |
-| sf_cut_right (Kimodo) | 31 | 26% | 89 cm | 25 fr, 13.3 cm | 3 fr, 7 deg | 0.20 s / 0.30 s / 1 fr | 24.1 m/s | 0.75 (0.73 / 0.84 / 2.18) |
-| sf_cut_left (Kimodo) | 31 | 58% | 93 cm | 27 fr, 13.4 cm | 3 fr, 1 deg | 0.27 s / 0.20 s / 0 fr | 21.3 m/s | 0.35 (0.73 / 0.12 / 0.49) |
+| clip                  | frames | skate | sink    | through body   | limits            | windup / strike / hold  | tip peak | read (body / sweep / arc)     |
+| --------------------- | ------ | ----- | ------- | -------------- | ----------------- | ----------------------- | -------- | ----------------------------- |
+| kp_cut_right          | 36     | 0%    | 0 cm    | 20 fr, 10.2 cm | 4 fr, worst 5 deg | 0.20 s / 0.10 s / 1 fr  | 48.3 m/s | **0.53** (0.79 / 0.19 / 1.79) |
+| kp_cut_left           | 36     | 0%    | 0 cm    | 23 fr, 8.3 cm  | 1 fr, worst 1 deg | 0.23 s / 0.10 s / 10 fr | 41.6 m/s | **0.43** (0.84 / 0.13 / 1.12) |
+| attack_1              | 21     | 86%   | 4.8 cm  | 21 fr, 4.4 cm  | 0                 | 0.13 s / 0.10 s / 3 fr  | 40.6 m/s | 0.37 (0.26 / 0.37 / 1.28)     |
+| attack_3              | 26     | 88%   | 10.8 cm | 4 fr, 2.2 cm   | 0                 | 0.13 s / 0.10 s / 14 fr | 45.5 m/s | 0.49 (0.39 / 0.33 / 1.96)     |
+| sf_cut_right (Kimodo) | 31     | 26%   | 89 cm   | 25 fr, 13.3 cm | 3 fr, 7 deg       | 0.20 s / 0.30 s / 1 fr  | 24.1 m/s | 0.75 (0.73 / 0.84 / 2.18)     |
+| sf_cut_left (Kimodo)  | 31     | 58%   | 93 cm   | 27 fr, 13.4 cm | 3 fr, 1 deg       | 0.27 s / 0.20 s / 0 fr  | 21.3 m/s | 0.35 (0.73 / 0.12 / 0.49)     |
 
 The follow-through carry (`--carry auto`): the drawn follow-throughs
 pull the hands back in after the contact, so the blade tip's path hooks

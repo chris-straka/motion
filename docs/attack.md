@@ -20,17 +20,17 @@ benchmark use only), retargeted exactly onto the hero and read at the
 game camera (`motion check --camera game`) and from their joints, beside
 the game's `attack_1` and `attack_3`:
 
-| | pro clips (6) | game attack_1 / attack_3 |
-|---|---|---|
-| hips turn through the strike | 60-120 deg | 0 |
-| chest twist on top of that | 30-60 deg | 50 / 0 |
-| lean into the cut | up to 30-57 deg | 0 / 12 |
-| hips drop (body heights) | 0.15-0.2 | 0.03 / 0.09 |
-| feet apart at the strike (heights) | 0.5-0.95 | 0.24 / 0.39 |
-| strike, load to fastest frame | 2-5 frames | 3 |
-| tip speed | 40-50 m/s | 40-45 m/s |
-| body change at the game camera | 0.56-0.88 | 0.29 / 0.40 |
-| readability score | 0.41-0.67 | 0.42 / 0.49 |
+|                                    | pro clips (6)   | game attack_1 / attack_3 |
+| ---------------------------------- | --------------- | ------------------------ |
+| hips turn through the strike       | 60-120 deg      | 0                        |
+| chest twist on top of that         | 30-60 deg       | 50 / 0                   |
+| lean into the cut                  | up to 30-57 deg | 0 / 12                   |
+| hips drop (body heights)           | 0.15-0.2        | 0.03 / 0.09              |
+| feet apart at the strike (heights) | 0.5-0.95        | 0.24 / 0.39              |
+| strike, load to fastest frame      | 2-5 frames      | 3                        |
+| tip speed                          | 40-50 m/s       | 40-45 m/s                |
+| body change at the game camera     | 0.56-0.88       | 0.29 / 0.40              |
+| readability score                  | 0.41-0.67       | 0.42 / 0.49              |
 
 The sword already moved as fast and as far as a pro's. The body did not
 take part. On the correctness measures the pro clips are not clean
@@ -86,16 +86,16 @@ directions (a `swing` key in the middle of a strike says which way round).
 `presets/attacks/*.json`. Game camera (3 m behind, 18 deg down), the
 hero's best body, read by `motion check --camera game`:
 
-| clip | readability | body change | tip arc (body heights x one-way share) | skate / sink / float | frames past a limit | through body |
-|---|---|---|---|---|---|---|
-| sweep (level slash, right to left) | 0.78 | 0.69 | 2.25 x 1.00 | 0 / 0 / 0 | 9 (wrist 12 deg) | 0 |
-| cleave (forehand diagonal) | 0.68 | 0.79 | 2.31 x 0.69 | 0 / 0 / 0 | 11 (back ankle 18 deg) | 1 fr, 6 cm |
-| backcut (backhand diagonal) | 0.65 | 0.74 | 2.22 x 0.65 | 0 / 0 / 0 | 2 | 11 fr, 9 cm |
-| thrust (lunge) | 0.32 | 0.64 | 0.38 x 1.00 | 0 / 0 / 0 | 8 | 1 fr, 6 cm |
-| game attack_1 | 0.42 | 0.29 | 1.82 x 0.88 | 12 cm / 4 cm / 0 | 0 | 11 fr, 3 cm |
-| game attack_3 | 0.49 | 0.40 | 1.93 x 1.00 | 28 cm / 10 cm / 0 | 0 | 3 fr, 2 cm |
-| key-pose cut (round 2) | 0.52 | 0.81 | 1.84 x 0.94 | 13 cm / 1 cm / 0 | 15 | 10 fr, 8 cm |
-| pro clips (6) | 0.41-0.67 | 0.56-0.88 | 1.8-2.9 | 3-51 cm | 10-107 | 0-30 fr |
+| clip                               | readability | body change | tip arc (body heights x one-way share) | skate / sink / float | frames past a limit    | through body |
+| ---------------------------------- | ----------- | ----------- | -------------------------------------- | -------------------- | ---------------------- | ------------ |
+| sweep (level slash, right to left) | 0.78        | 0.69        | 2.25 x 1.00                            | 0 / 0 / 0            | 9 (wrist 12 deg)       | 0            |
+| cleave (forehand diagonal)         | 0.68        | 0.79        | 2.31 x 0.69                            | 0 / 0 / 0            | 11 (back ankle 18 deg) | 1 fr, 6 cm   |
+| backcut (backhand diagonal)        | 0.65        | 0.74        | 2.22 x 0.65                            | 0 / 0 / 0            | 2                      | 11 fr, 9 cm  |
+| thrust (lunge)                     | 0.32        | 0.64        | 0.38 x 1.00                            | 0 / 0 / 0            | 8                      | 1 fr, 6 cm   |
+| game attack_1                      | 0.42        | 0.29        | 1.82 x 0.88                            | 12 cm / 4 cm / 0     | 0                      | 11 fr, 3 cm  |
+| game attack_3                      | 0.49        | 0.40        | 1.93 x 1.00                            | 28 cm / 10 cm / 0    | 0                      | 3 fr, 2 cm   |
+| key-pose cut (round 2)             | 0.52        | 0.81        | 1.84 x 0.94                            | 13 cm / 1 cm / 0     | 15                     | 10 fr, 8 cm  |
+| pro clips (6)                      | 0.41-0.67   | 0.56-0.88   | 1.8-2.9                                | 3-51 cm              | 10-107                 | 0-30 fr      |
 
 Each is 1.1 s: a coil (the back foot steps back), a windup held 2 frames
 (the front foot steps out), a strike of 4 frames over planted feet, a
@@ -153,10 +153,19 @@ joint's local axes. On the single-finger hero rig in the owner's corpus,
 `motionforge socket` places `Socket_Hand_L/R` in the palms and authored
 `sweep` / `cleave` / `backcut` (`--blade-pose socket`) move from grip
 `0` (`18.7 cm` handle, `0 deg` curl) to grip `1.00` (`2.6 cm` handle,
-`47.3 deg` curl), scoring `0.50 / 0.43 / 0.41` overall. Those numbers predate
-the distal-mitten pocket (2026-11-16, 5012a0d); with it the same run reads
-grip `0.345` (`9.1 cm`, `26 deg`), overall `0.345` for sweep, cleave and
-backcut (2026-11-18, `docs/log.md`).
+`47.3 deg` curl), scoring `0.50 / 0.43 / 0.41` overall. Those numbers predate the distal-mitten pocket (2026-11-16, `5012a0d`), which
+briefly dropped the hero to `0.345` (`9.1 cm`, `26 deg`, fleet job `y45x3xbz`).
+On 2026-11-19 (`motion-1` `153822d` and `motion-4` `b296634`), the grip measure
+moved onto posed hand/palm skinned triangles (`readcam::skin_grip_of`) and the
+solver seated the distal-mitten palm pocket (`DISTAL_MITTEN_PALM_OFFSET =
+0.008`, `DISTAL_MITTEN_CURL = 0.72`). Measured via `tools/bench/grip_gate.sh`
+(fleet job `yhsgagzp`): single-finger hero grip **`0.972`** across all four
+presets (`cleave`, `backcut`, `sweep`, `thrust`; `palm 1.4 cm`, `wrap 100%`,
+`curl 34.0 deg`), five-finger control **`0.966`** unchanged, and all 6 planted
+bad cases `0.000`. On the same day (`motion-6` `335da4b`), `FOREARM_ROLL_DEG`
+was restored to `80.0` after `weights check --motion` across all four attack
+presets (fleet job `q4zkw4ju`) showed `105 deg` increased twistless forearm
+candy-wrapping `D_VOLUME` by `+79%` (`84.7 -> 151.4 cm^2`).
 
 **Weight: the hips lead, the blade lags, then snaps.** Each move's keys
 are reached on three clocks: the hips (and feet) finish 35% early, the
@@ -164,11 +173,11 @@ chest 20% early, the sword starts 20% late and catches up; all land on
 the key together (test). Measured frame by frame against the six pro
 attacks (the frame each part turns fastest, against the tip's fastest):
 
-| | hips fastest, frames before the tip | hips turn speed | still after the strike |
-|---|---|---|---|
-| pro clips (6) | 0-2 (one 11) | 700-1,700 deg/s | 1-15 frames |
-| round 1 (no overlap) | 0 | 510-650 deg/s | 4-5 |
-| round 2 | 1 | 730-1,060 deg/s | 7 |
+|                      | hips fastest, frames before the tip | hips turn speed | still after the strike |
+| -------------------- | ----------------------------------- | --------------- | ---------------------- |
+| pro clips (6)        | 0-2 (one 11)                        | 700-1,700 deg/s | 1-15 frames            |
+| round 1 (no overlap) | 0                                   | 510-650 deg/s   | 4-5                    |
+| round 2              | 1                                   | 730-1,060 deg/s | 7                      |
 
 The hips turn further through the strike (windup 45-60 deg the other
 way, follow-through 55-65 deg), the follow-through holds 0.3 s (pros:
@@ -176,11 +185,11 @@ up to 0.5 s), the recovery ends on a 0.1 s hold in the ready pose, and
 the ready pose holds the sword at the waist pointing forward (it had
 stood up in front of his face once the palm turned the blade).
 
-| clip (round 2, starred hero) | readability | body change | tip arc | skate / sink / float | through body | past a limit |
-|---|---|---|---|---|---|---|
-| sweep | 0.78 | 0.72 | 2.25 x 1.00 | 0 / 0 / 0 | 0 | 22 fr (wrist 26 deg) |
-| backcut | 0.75 | 0.75 | 2.21 x 0.89 | 0 / 0 / 0 | 8 fr, 11 cm | 19 fr (wrist 30 deg) |
-| cleave | 0.72 | 0.79 | 2.32 x 0.78 | 0 / 0 / 0 | 1 fr, 2 cm | 17 fr (back ankle 24 deg) |
+| clip (round 2, starred hero) | readability | body change | tip arc     | skate / sink / float | through body | past a limit              |
+| ---------------------------- | ----------- | ----------- | ----------- | -------------------- | ------------ | ------------------------- |
+| sweep                        | 0.78        | 0.72        | 2.25 x 1.00 | 0 / 0 / 0            | 0            | 22 fr (wrist 26 deg)      |
+| backcut                      | 0.75        | 0.75        | 2.21 x 0.89 | 0 / 0 / 0            | 8 fr, 11 cm  | 19 fr (wrist 30 deg)      |
+| cleave                       | 0.72        | 0.79        | 2.32 x 0.78 | 0 / 0 / 0            | 1 fr, 2 cm   | 17 fr (back ankle 24 deg) |
 
 The palm grip bends the wrist further than the old hold: the wrist limit
 is passed on 17-22 frames per attack (the pros: 10-107 frames). By eye

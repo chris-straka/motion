@@ -1,8 +1,18 @@
-# Refitting clips to a body's width (design, motion-13)
+# Refitting clips to a body's width (motion-13)
 
-Written 2026-11-19. Not built. Work list item `motion-13`: arms clear the
-torso, hands never enter the body, arms don't pass through each other on a
-wide chest.
+Implemented 2026-11-19 (`8413c42`: `rust/core/src/width_refit.rs` + extended
+`rust/core/src/contact.rs`, wired into `animate` as `--refit-width`, default
+on; clean-checkout fleet audits `fphwu3tj` on Mac and `st2ake8d` on Linux; CI
+run `44659217781` green). Work list item `motion-13`: arms clear the torso,
+hands never enter the body, arms don't pass through each other on a wide chest.
+
+Measured on real game rigs with `weights check --motion` (fleet job `8rygzvnw`,
+9 core clips) and `motionforge motion check --camera game --blade-pose socket`:
+hero `through_cm2` dropped `-42%` (`2482.0 -> 1443.1 cm^2`, `arm-arm`
+`828.9 -> 0`, `walk` arm-leg `498.6 + 263.4 -> 0`, `forearm_cm2 = 0.0`) and
+`motion check` through-body frames dropped `-78%` (`894 -> 197`); five-finger
+control `through_cm2` dropped `-82%` (`3642.2 -> 649.5 cm^2`, `forearm_cm2 =
+0.0`) and through-body frames dropped `-91%` (`637 -> 58`).
 
 ## The fault
 

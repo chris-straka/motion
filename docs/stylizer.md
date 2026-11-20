@@ -5,7 +5,7 @@ training. Two ways in:
 
 - **On a rigged GLB** (the path the game's clips take, after
   `animate`): `motionforge stylize --input hero.glb --output out.glb
-  [--clip attack_1] [--suffix _new]`. Default `--mode body` (below);
+[--clip attack_1] [--suffix _new]`. Default `--mode body` (below);
   `--mode per-bone` runs the original algorithm unchanged.
 - **On clip JSON** (the Blender operator): exports the active action,
   runs `motionforge stylize`, imports `<action>_stylized`. Per-bone only
@@ -75,17 +75,17 @@ side-by-side reel and an 8-frame strip per attack (kept with the game's
 files, not in this repo). Commands: `stylize --mode per-bone --suffix
 _old`, then `stylize --mode body --suffix _new`, on f.
 
-| clip | skate frames / cm | through body frames / deepest | arm jerk mean | windup / strike / hold |
-|---|---|---|---|---|
-| attack_1 original | 86% / 13.6 | 21 / 4.4 cm | 3,650 | 0.13 s / 0.10 s / 3 fr |
-| attack_1 old | 48% / 8.9 | 21 / 9.1 cm | 10,980 | 0.03 / 0.07 / 0 |
-| attack_1 new | 43% / 8.6 | 21 / 8.6 cm | 10,890 | 0.03 / 0.03 / 1 |
-| attack_2 original | 86% / 13.6 | 21 / 3.3 cm | 3,150 | 0.13 / 0.13 / 2 |
-| attack_2 old | 48% / 8.9 | 21 / 8.8 cm | 14,350 | 0.00 / 0.03 / 2 |
-| attack_2 new | 43% / 9.0 | 21 / 13.1 cm | 10,050 | 0.07 / 0.07 / 4 |
-| attack_3 original | 88% / 27.4 | 4 / 2.2 cm | 2,070 | 0.13 / 0.10 / 14 |
-| attack_3 old | 27% / 6.0 | 4 / 4.1 cm | 7,560 | 0.00 / 0.03 / 0 |
-| attack_3 new | 42% / 16.4 | 9 / 2.4 cm | 4,970 | 0.23 / 0.10 / 4 |
+| clip              | skate frames / cm | through body frames / deepest | arm jerk mean | windup / strike / hold |
+| ----------------- | ----------------- | ----------------------------- | ------------- | ---------------------- |
+| attack_1 original | 86% / 13.6        | 21 / 4.4 cm                   | 3,650         | 0.13 s / 0.10 s / 3 fr |
+| attack_1 old      | 48% / 8.9         | 21 / 9.1 cm                   | 10,980        | 0.03 / 0.07 / 0        |
+| attack_1 new      | 43% / 8.6         | 21 / 8.6 cm                   | 10,890        | 0.03 / 0.03 / 1        |
+| attack_2 original | 86% / 13.6        | 21 / 3.3 cm                   | 3,150         | 0.13 / 0.13 / 2        |
+| attack_2 old      | 48% / 8.9         | 21 / 8.8 cm                   | 14,350        | 0.00 / 0.03 / 2        |
+| attack_2 new      | 43% / 9.0         | 21 / 13.1 cm                  | 10,050        | 0.07 / 0.07 / 4        |
+| attack_3 original | 88% / 27.4        | 4 / 2.2 cm                    | 2,070         | 0.13 / 0.10 / 14       |
+| attack_3 old      | 27% / 6.0         | 4 / 4.1 cm                    | 7,560         | 0.00 / 0.03 / 0        |
+| attack_3 new      | 42% / 16.4        | 9 / 2.4 cm                    | 4,970         | 0.23 / 0.10 / 4        |
 
 By eye (the strips and reels):
 

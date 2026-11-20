@@ -40,12 +40,12 @@ so two of ours now pass). The rival's column is its best of four variants
 (below) after fix. Crotch is failing vertices in `hip_forward` left/right,
 armpit in `arm_up` left/right, both after fix.
 
-| Model                         | Ours: raw to fixed, failing | Rival: raw to fixed, failing      | Crotch, ours / rival | Armpit, ours / rival |
-| ----------------------------- | --------------------------- | --------------------------------- | -------------------- | -------------------- |
-| Man, long coat                | 55.0 to 55.9, 2             | 38.5 to 44.1, 5 (no fingers, normals) | 16/20 / 11/14    | 7/0 / 17/13          |
-| Woman, shirt and belt pouches | 70.6 to 74.6, 0 (passes)    | 13.8 to 57.8, 3 (no fingers)      | 0/0 / 8/123          | 0/0 / 0/0            |
-| Woman, fitted clothes         | 59.7 to 59.8, 1             | 54.6 to 64.2, 2 (no fingers)      | 8/12 / 4/5           | 0/0 / 4/0            |
-| Child                         | 61.7 to 69.5, 0 (passes)    | 29.9 to 59.6, 4 (no fingers, normals) | 2/2 / 0/27       | 0/0 / 4/0            |
+| Model                         | Ours: raw to fixed, failing | Rival: raw to fixed, failing          | Crotch, ours / rival | Armpit, ours / rival |
+| ----------------------------- | --------------------------- | ------------------------------------- | -------------------- | -------------------- |
+| Man, long coat                | 55.0 to 55.9, 2             | 38.5 to 44.1, 5 (no fingers, normals) | 16/20 / 11/14        | 7/0 / 17/13          |
+| Woman, shirt and belt pouches | 70.6 to 74.6, 0 (passes)    | 13.8 to 57.8, 3 (no fingers)          | 0/0 / 8/123          | 0/0 / 0/0            |
+| Woman, fitted clothes         | 59.7 to 59.8, 1             | 54.6 to 64.2, 2 (no fingers)          | 8/12 / 4/5           | 0/0 / 4/0            |
+| Child                         | 61.7 to 69.5, 0 (passes)    | 29.9 to 59.6, 4 (no fingers, normals) | 2/2 / 0/27           | 0/0 / 4/0            |
 
 The rival with its finger bones kept, after fix: 43.3 (5 failing), 39.2
 (2), 39.7 (4) and 36.5 (3) in the same order. With fingers kept the body

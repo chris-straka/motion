@@ -46,7 +46,9 @@ motionforge autopose --model weights.json --effectors eff.json --output POSE.jso
 motionforge clip-info --input IN.json
 motionforge standardize --input rig.glb --output std.glb [--class humanoid]
 motionforge animate --input std.glb --clips clips/ --output animated.glb \\
-    [--pick "lib.glb:Sword_Regular_A=attack_1,..."] [--no-contact] [--weapon R|L|none]
+    [--pick "lib.glb:Sword_Regular_A=attack_1,..."] [--refit-width|--no-refit-width] [--no-contact] [--weapon R|L|none]
+motionforge giant --input animated.glb --output giant.glb --scale 4.0 [--mask full|arms-only] [--pin-pelvis]
+motionforge creature-clips --creature c.json --glb-in rig.glb --glb-out out.glb --clips idle,walk,attack
 motionforge grip --input lib-with-weapon-clips.glb --output lib.glb
 motionforge pose-test --input std.glb --output poses.glb --sheet sheet.png [--clips clips/]
 motionforge fixture-glb --output test.glb --naming mixamo|plain|def [--twisted] [--walk]

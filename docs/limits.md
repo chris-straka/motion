@@ -12,8 +12,8 @@ owns the format and both consumers.
   "version": 1,
   "rig": "biped_hero",
   "bones": {
-    "DEF-thigh.L": {"max_angle_deg": 120.0},
-    "DEF-shin.L": {"max_angle_deg": 150.0}
+    "DEF-thigh.L": { "max_angle_deg": 120.0 },
+    "DEF-shin.L": { "max_angle_deg": 150.0 }
   }
 }
 ```

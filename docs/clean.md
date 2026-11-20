@@ -43,13 +43,13 @@ Twist helpers are re-driven from their drivers. Clips are resampled at
 
 ## The game's clips (2026-11-13)
 
-| measure (sum over the 31 clips) | base | clean |
-|---|---|---|
-| skate cm | 344.5 | 188.4 |
-| sink cm (deepest per clip) | 710.6 | 0.0 |
-| floating frames | 826 | 93 |
-| back-and-forth mm | 37.9 | 39.7 |
-| joint-limit frames | 243 | 245 |
+| measure (sum over the 31 clips) | base  | clean |
+| ------------------------------- | ----- | ----- |
+| skate cm                        | 344.5 | 188.4 |
+| sink cm (deepest per clip)      | 710.6 | 0.0   |
+| floating frames                 | 826   | 93    |
+| back-and-forth mm               | 37.9  | 39.7  |
+| joint-limit frames              | 243   | 245   |
 
 The seven `sf_*` clips come up 98-103 cm (they stood in the floor to the
 waist), the enemy and Quirin takes down 7-25 cm (they hovered). 26 s for

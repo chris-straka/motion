@@ -1,7 +1,38 @@
 # TODO — open follow-ups
 
-Catch-up list as of 2026-10-03. Scope and gates stay in `PLAN.md`;
-numbers and commands in `docs/measurements.md`.
+Catch-up list as of 2026-11-19 (`motion` repo, command `motionforge`). Scope
+and gates stay in `PLAN.md`; numbers and commands in `docs/measurements.md`,
+`docs/pro-bench.md`, and `docs/log.md`.
+
+## Done 2026-11-19 (CI green on Linux + macOS + Blender + Python)
+
+- `motion-1` + `motion-4`: skin-based sword grip measure (`readcam::skin_grip_of`,
+  `153822d`) and palm-pocket seating (`b296634`); single-finger hero `0.972` on
+  all 4 presets, five-finger control `0.966`, 6 planted bad cases `0.000`
+  (`tools/bench/grip_gate.sh`, fleet job `yhsgagzp`).
+- `motion-2`: exact algebraic IK in `attack/ik.rs` + honest mitten test
+  (`6d1d261`, CI `44644031463`).
+- `motion-3`: guarded gate `tools/gate/carbon.sh`, verified 11/11 by
+  `tools/gate/planted.sh` (`015c9de`, fleet job `xe3uhzr2`).
+- `motion-6`: restored `FOREARM_ROLL_DEG = 80.0` after `weights check --motion`
+  proved `105 deg` increased twistless forearm `D_VOLUME` +79% (`335da4b`,
+  fleet job `q4zkw4ju`).
+- `motion-13` (width refit): `width_refit.rs` + extended `contact.rs` (shins,
+  upper arms, arm-vs-arm, source slack, `--refit-width`, `8413c42`, fleet
+  audits `fphwu3tj`/`st2ake8d`, real-rig `8rygzvnw`).
+- `motion-8`: pro bench held-out Mixamo set + `pro_bench.py planted` + machine-free
+  `pro_fleet.sh` (`b2270cd`, `3cf2c1e`, fleet job `js23pxq6`).
+- `motion-7`: giant pass `motionforge giant --scale k` (Froude `sqrt(k)` timing,
+  root/rig `x k`, anticipation/hit-stop/settle, GLB `extras` events, `--mask
+arms-only --pin-pelvis`, `42f6a74`, fleet audit `xxzx4eja`).
+- `motion-9`: non-quadruped creature walks in `anybody::walk_stride` +
+  `motionforge creature-clips --clips idle,walk,attack` for two-legged monsters
+  and legless body-wave creatures (`8add1aa`, fleet audit `q7fh2jub`).
+- `motion-12`: code-health sweep (`is_distal_mitten`, `total_cmp`,
+  `helpers::owner_of`, cached `helpers::Drivers`, `ee69089`, fleet audit
+  `mj9necpq`).
+- `motion-11`: video-model terms in `docs/licensing.md` (Veo/Omni, Seedance,
+  Kling, MiniMax) + `tools/manifest.py --check` source-row gate (`fe72a84`).
 
 ## Done 2026-10-03 (PRs #1–#5, all merged, CI green)
 
@@ -52,9 +83,10 @@ numbers and commands in `docs/measurements.md`.
       as rough; body-mode exaggeration should stop at the contact proxies
       and take keys from the weapon hand's extremes too.
 
-- [ ] Contact pass v2 (`docs/contact.md` limits): upper arm (armpit) and
-      leg proxies, other-arm contact, a blade proxy for drawn-weapon
-      locomotion.
+- [x] Contact pass v2 (`docs/contact.md`, `docs/width-refit.md`): upper arm
+      (armpit), shin proxies, arm-vs-arm contact with free-hand weapon priority,
+      per-frame source slack, and width-first retargeting (landed 2026-11-19 in
+      `8413c42`).
 - [ ] Corrective shapes if the owner wants the deformation gate to pass
       real clips (`docs/adapters.md` "Shoulder helpers"): pose-space
       targets baked as glTF morph weights per clip, and weightforge

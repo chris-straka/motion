@@ -30,7 +30,7 @@ behind it (`docs/measurements.md`).
   -> same output bytes). No hash-map iteration in output paths, no
   timestamps or temp paths in outputs, no unseeded RNG, and no
   platform libm: call `motion_core::detmath::{sin, cos, sin_cos, asin,
-  acos, exp}` instead of the `f64` methods (Apple's and glibc's libm
+acos, exp}` instead of the `f64` methods (Apple's and glibc's libm
   differ in the last ulp; a unit test rejects `.sin()` & co. in core
   code). `sqrt`, `floor`, `powi`, `to_degrees` are exact and fine. CLI
   contract goldens pin this; regenerate deliberately and review the
@@ -51,22 +51,29 @@ behind it (`docs/measurements.md`).
 ## Checks
 
 - `cd rust && cargo fmt --all --check && cargo test --locked --release`
-  must be green with zero warnings. CI (`.github/workflows/ci.yml`)
-  runs it on Linux x86_64 and macOS arm64, so goldens must be
+  must be green with zero warnings. CI (`.github/workflows/ci.yml`, green on
+  `main`) runs it on Linux x86_64 and macOS arm64 — including
+  `python3 tools/bench/pro_bench.py planted` — so goldens must be
   byte-identical on both.
+- Guarded Carbon/Neon gate: `bash tools/gate/carbon.sh` verifies scope
+  (blocking edits to tests, fixtures, `readcam.rs`, `motioncheck.rs`,
+  `tools/bench/`, `tools/gate/`), `#[test]`/`#[ignore` counts, formatting,
+  `-D warnings` offline release build, full Rust & CLI golden tests, and Python
+  stdlib tests (`tools/gate/planted.sh` verifies the guard).
 - CLI contract goldens (`rust/cli/tests/` + `tests/fixtures/`): after
   an intended CLI output change, regenerate with
   `UPDATE_GOLDENS=1 cargo test --locked --release -p motionforge`
   and review the diff before committing.
-- Blender smoke (headless, procedural armature, no rigforge needed):
+- Blender smoke (headless, procedural armature, no gamerig needed):
   `blender --background --factory-startup --python blender/tests/test_headless.py`.
   CI runs it (and `blender.tests.test_batch`, which takes `$BLENDER`)
   on Linux with Blender 5.2.1.
-  With rigforge + a real clip, the live checks are in
+  With gamerig + a real clip, the live checks are in
   `docs/measurements.md`.
 - Manifest gate: `python3 tools/manifest.py --check data/manifest.json`
-  rejects blocked licenses; every training run records its manifest
-  checksum in the run log.
+  rejects blocked licenses and any clip whose `source` has no documented row
+  in `docs/licensing.md`; every training run records its manifest checksum in
+  the run log.
 
 ## Layout
 

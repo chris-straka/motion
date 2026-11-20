@@ -184,12 +184,12 @@ measured on the hero (genforge rehearsal rig, after the weights gate) with
 weightforge's post-animation fix; neither beat the existing half-turn
 twist helper, so neither ships (patches kept outside the repo):
 
-| helpers on the upper arm | placeholder clips, fix | CC0 library, fix |
-|---|---|---|
-| twist (0.5) only, as shipped | 44.7 -> 51.0 | 29.9 |
-| + glenohumeral helper (0.25 share) | 44.7 -> 44.9 | 30.2 |
-| + glenohumeral helper (0.333), before the contact pass | 45.7 -> 48.3 | |
-| + clavicle-pivot helper (0.2-0.5) | 52.5 -> 52.5 (fix finds nothing) | |
+| helpers on the upper arm                               | placeholder clips, fix           | CC0 library, fix |
+| ------------------------------------------------------ | -------------------------------- | ---------------- |
+| twist (0.5) only, as shipped                           | 44.7 -> 51.0                     | 29.9             |
+| + glenohumeral helper (0.25 share)                     | 44.7 -> 44.9                     | 30.2             |
+| + glenohumeral helper (0.333), before the contact pass | 45.7 -> 48.3                     |                  |
+| + clavicle-pivot helper (0.2-0.5)                      | 52.5 -> 52.5 (fix finds nothing) |                  |
 
 Upper bounds tried on the same clips (weightforge check with other
 skinning in place of LBS): dual-quaternion skinning 25.9-41.0,
