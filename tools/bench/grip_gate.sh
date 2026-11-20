@@ -191,7 +191,7 @@ label, d, min_closed, target_s = sys.argv[1], sys.argv[2], float(sys.argv[3]), s
 target = float(target_s) if target_s else None
 ok = True
 j = json.load(open(os.path.join(d, "closed.json")))
-by_name = {c["clip"]: c["read_cam"]["grip"] for c in j["clips"]}
+by_name = {c["name"]: c["read_cam"]["grip"] for c in j["clips"]}
 for preset in ("cleave", "backcut", "sweep", "thrust"):
     if preset not in by_name:
         print(f"    ERROR: missing preset {preset} on {label}")
