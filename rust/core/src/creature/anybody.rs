@@ -26,11 +26,14 @@
 //! profile's frame (Z up) through `gait`'s poser, so the clips go into the
 //! GLB with `glbanim::clip_to_glb` like the gait's.
 
-use super::gait::{chain_toward, children, left_of, smooth, Poser};
+use super::gait::{
+    apply_leg_pts, chain_toward, children, left_of, leg_rig_bones, make_frame, smooth, LegRig,
+    Poser, Stride,
+};
 use super::profile::{skeleton_bounds, Creature};
-use crate::clip::Clip;
+use crate::clip::{fk, Clip};
 use crate::detmath;
-use crate::math::Vec3;
+use crate::math::{Quat, Vec3};
 
 const TAU: f64 = std::f64::consts::PI * 2.0;
 
@@ -458,13 +461,447 @@ pub fn sweep(c: &Creature, body: &Body, frames_each: usize, fps: f64) -> Clip {
     }
 }
 
+/// Trace a leg chain down to its actual foot bone in `c.feet` when the leg
+/// subtree forks near the foot; otherwise keep `leg` as read.
+fn leg_chain_to_foot(c: &Creature, leg: &[usize]) -> Vec<usize> {
+    let top = leg[0];
+    if let Some(&last) = leg.last() {
+        if c.feet.contains(&last) {
+            return leg.to_vec();
+        }
+    }
+    let sub = subtree(c, top);
+    if let Some(&foot) = c.feet.iter().filter(|f| sub.contains(f)).min_by(|a, b| {
+        c.skeleton.bones[**a]
+            .tail
+            .z
+            .total_cmp(&c.skeleton.bones[**b].tail.z)
+            .then(a.cmp(b))
+    }) {
+        let mut chain = vec![foot];
+        let mut cur = foot;
+        while cur != top {
+            let Some(p) = c.skeleton.bones[cur].parent else {
+                break;
+            };
+            chain.push(p);
+            cur = p;
+        }
+        chain.reverse();
+        return chain;
+    }
+    leg.to_vec()
+}
+
+/// Index in `chain` where the rigid flat foot starts. A plantigrade 4+ bone
+/// leg ending in `[..., Foot, ToeBase]` keeps both foot bones flat as one
+/// block so the upper leg solves cleanly to the ankle.
+fn foot_start_of(c: &Creature, chain: &[usize]) -> usize {
+    let n = chain.len();
+    if n < 4 {
+        return n.saturating_sub(1);
+    }
+    let sk = &c.skeleton;
+    let pen = &sk.bones[chain[n - 2]];
+    let tip = &sk.bones[chain[n - 1]];
+    let top = &sk.bones[chain[0]];
+    let pen_len = (pen.tail - pen.head).length();
+    let pen_dz = (pen.head.z - pen.tail.z).abs();
+    let total_drop = (top.head.z - tip.tail.z).max(1e-6);
+    let pen_above = pen.head.z - tip.tail.z;
+    if pen_len > 1e-6 && pen_dz < 0.75 * pen_len && pen_above < 0.25 * total_drop {
+        n - 2
+    } else {
+        n - 1
+    }
+}
+
+/// Solve one biped/monster leg onto `contact` preserving every bone length:
+/// exact 2-bone IK when `m == 2` (avoiding collinear knee lock on straight
+/// rest legs) and bend-initialized FABRIK for longer chains, then aimed via
+/// `gait::apply_leg_pts`.
+fn solve_biped_leg(c: &Creature, rig: &LegRig, quats: &mut [Quat], shift: Vec3, contact: Vec3) {
+    let sk = &c.skeleton;
+    let m = rig.segs.len();
+    if m == 0 {
+        return;
+    }
+    for &b in &rig.bones {
+        quats[b] = Quat::IDENTITY;
+    }
+    let posed = fk(sk, &make_frame(c, quats, shift));
+    let mut pts: Vec<Vec3> = rig.bones[..=m].iter().map(|&b| posed[b].head).collect();
+    let lens: Vec<f64> = rig.segs.iter().map(|s| s.length()).collect();
+    let hip = pts[0];
+    let mut ankle = contact - rig.paw_vec;
+    let far = (ankle - hip).length();
+    if far > 0.99 * rig.reach {
+        ankle = hip + (ankle - hip).scale(0.99 * rig.reach / far);
+    }
+
+    let rest_pts: Vec<Vec3> = rig.bones[..=m].iter().map(|&b| sk.bones[b].head).collect();
+    let rest_chord = rest_pts[m] - rest_pts[0];
+    let rest_dir = rest_chord.normalized();
+    let mut cum = vec![0.0; m + 1];
+    for k in 0..m {
+        cum[k + 1] = cum[k] + lens[k];
+    }
+    let total = cum[m].max(1e-9);
+    let mut rest_bends = vec![Vec3::ZERO; m + 1];
+    let mut max_bend = 0.0_f64;
+    for k in 1..m {
+        let frac = cum[k] / total;
+        let on_line = rest_pts[0] + rest_chord.scale(frac);
+        let raw = rest_pts[k] - on_line;
+        let perp = raw - rest_dir.scale(raw.dot(rest_dir));
+        max_bend = max_bend.max(perp.length());
+        rest_bends[k] = perp;
+    }
+    let d = if (ankle - hip).length() > 1e-9 {
+        (ankle - hip).normalized()
+    } else {
+        Vec3::new(0.0, 0.0, -1.0)
+    };
+    let perp_to = |v: Vec3| -> Vec3 { v - d.scale(v.dot(d)) };
+
+    if m == 1 {
+        pts[0] = hip;
+        pts[1] = hip + d.scale(lens[0]);
+    } else if m == 2 {
+        let (l0, l1) = (lens[0], lens[1]);
+        let min_d = (l0 - l1).abs() + 1e-4;
+        let max_d = (0.995 * (l0 + l1)).max(min_d);
+        let dist = (ankle - hip).length().clamp(min_d, max_d);
+        let a = (l0 * l0 - l1 * l1 + dist * dist) / (2.0 * dist);
+        let h = (l0 * l0 - a * a).max(0.0).sqrt();
+        let hint = if max_bend >= 0.03 * rig.reach {
+            rest_bends[1]
+        } else {
+            c.forward
+        };
+        let p = perp_to(hint);
+        let pole = if p.length() > 1e-6 {
+            p.normalized()
+        } else {
+            let f = perp_to(c.forward);
+            if f.length() > 1e-6 {
+                f.normalized()
+            } else {
+                left_of(c)
+            }
+        };
+        pts[0] = hip;
+        pts[1] = hip + d.scale(a) + pole.scale(h);
+        pts[2] = hip + d.scale(dist);
+    } else {
+        let fwd_perp = {
+            let f = perp_to(c.forward);
+            if f.length() > 1e-6 {
+                f.normalized()
+            } else {
+                left_of(c)
+            }
+        };
+        for k in 1..m {
+            let frac = cum[k] / total;
+            let offset = if max_bend >= 0.03 * rig.reach {
+                perp_to(rest_bends[k])
+            } else {
+                fwd_perp.scale(0.10 * rig.reach * detmath::sin(std::f64::consts::PI * frac))
+            };
+            pts[k] = hip.lerp(ankle, frac) + offset;
+        }
+        for _ in 0..48 {
+            pts[m] = ankle;
+            for k in (0..m).rev() {
+                pts[k] = pts[k + 1] + (pts[k] - pts[k + 1]).normalized().scale(lens[k]);
+            }
+            pts[0] = hip;
+            for k in 0..m {
+                pts[k + 1] = pts[k] + (pts[k + 1] - pts[k]).normalized().scale(lens[k]);
+            }
+        }
+    }
+    apply_leg_pts(c, rig, &posed, &pts, quats);
+}
+
+fn walk_biped(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
+    let left = left_of(c);
+    let up = Vec3::new(0.0, 0.0, 1.0);
+    let mut legs: Vec<Vec<usize>> = body.legs.iter().map(|l| leg_chain_to_foot(c, l)).collect();
+    for leg in &legs {
+        if leg.len() < 2 {
+            return Err("two-legged walk requires at least 2 bones per leg".into());
+        }
+    }
+    // Order deterministically: left leg first, right leg second.
+    legs.sort_by(|a, b| {
+        let sa = c.skeleton.bones[*a.last().unwrap()].tail.dot(left);
+        let sb = c.skeleton.bones[*b.last().unwrap()].tail.dot(left);
+        sb.total_cmp(&sa).then(a[0].cmp(&b[0]))
+    });
+    let rigs: Vec<LegRig> = legs
+        .iter()
+        .map(|l| leg_rig_bones(c, l, foot_start_of(c, l)))
+        .collect();
+    let hip = (rigs[0].drop + rigs[1].drop) * 0.5;
+    if hip <= 1e-6 {
+        return Err("two-legged walk requires legs with positive vertical drop".into());
+    }
+
+    let duty = 0.62;
+    let offsets = [0.0, 0.5];
+    let froude = 0.20;
+    let stride_in_hips = 1.4;
+    let full_speed = (froude * 9.81 * hip).sqrt();
+    let frames = ((stride_in_hips * hip / full_speed) * fps)
+        .round()
+        .max(16.0) as usize;
+    let period = frames as f64 / fps;
+
+    let crouch = 0.075 * hip;
+    let bob = 0.025 * hip;
+    let lat_shift = 0.025 * hip;
+    let phase_shift = 0.5 * duty - 0.25;
+    let z_shift_at = |t: f64| -crouch - bob * detmath::cos(2.0 * TAU * (t - phase_shift));
+    let lat_at = |t: f64| lat_shift * detmath::sin(TAU * (t - phase_shift));
+
+    let mut half_reach = f64::INFINITY;
+    for (rig, off) in rigs.iter().zip(offsets) {
+        let top = rig.bones[0];
+        let ankle_bone = rig.bones[rig.segs.len()];
+        let rest_off = c.skeleton.bones[ankle_bone].head - c.skeleton.bones[top].head;
+        let rest_fwd = rest_off.dot(c.forward);
+        let rest_lat = rest_off.dot(left);
+        for k in 0..=16 {
+            let u = k as f64 / 16.0;
+            let s = 1.0 - 2.0 * u;
+            if s.abs() < 1e-6 {
+                continue;
+            }
+            let phase = u * duty;
+            let t = (phase - off).rem_euclid(1.0);
+            let dz = (rig.drop + z_shift_at(t)).max(0.0);
+            let dl = rest_lat - lat_at(t);
+            let avail_sq = (0.97 * rig.reach).powi(2) - dz * dz - dl * dl;
+            let avail = avail_sq.max(0.0).sqrt();
+            let max_h = ((avail - s.signum() * rest_fwd) / s.abs()).max(0.0);
+            half_reach = half_reach.min(max_h);
+        }
+    }
+    let stance = (duty * stride_in_hips * hip).min(2.0 * half_reach);
+    if stance <= 1e-6 {
+        return Err("legs cannot clear a stride without stretching".into());
+    }
+    let speed = stance / (duty * period);
+    let half = 0.5 * stance;
+    let lift = (0.14 * hip).max(0.055 * c.height).min(0.45 * hip);
+    let swing_time = (1.0 - duty) * period;
+
+    let free_front = body.free_front();
+    let free_back = body.free_back();
+    let legs_mid = 0.5
+        * (c.skeleton.bones[legs[0][0]].head.dot(left)
+            + c.skeleton.bones[legs[1][0]].head.dot(left));
+
+    let mut out = Vec::with_capacity(frames);
+    for f in 0..frames {
+        let t = f as f64 / frames as f64;
+        let mut p = Poser::new(c);
+        let step_cos = detmath::cos(TAU * t);
+        let bob_cos = detmath::cos(2.0 * TAU * (t - phase_shift));
+        if !free_front.is_empty() {
+            let (head, rest) = free_front.split_last().unwrap();
+            if !rest.is_empty() {
+                p.yaw_chain(rest, 6.0 * step_cos);
+                p.pitch_chain(rest, 2.0 * bob_cos);
+            }
+            p.yaw(*head, -4.0 * step_cos);
+            p.pitch(*head, -2.5 * bob_cos);
+        }
+        for (i, &b) in free_back.iter().enumerate() {
+            let k = free_back.len() as f64;
+            p.yaw(b, 14.0 / k * detmath::sin(TAU * t - 0.4 * i as f64));
+        }
+        // Free arms counter-swing in opposite phase to their ipsilateral leg.
+        for arm in &body.arms {
+            let top = arm[0];
+            let arm_side = 0.5
+                * (c.skeleton.bones[top].head.dot(left)
+                    + c.skeleton.bones[*arm.last().unwrap()].tail.dot(left))
+                - legs_mid;
+            let leg_off = if arm_side >= 0.0 {
+                offsets[0]
+            } else {
+                offsets[1]
+            };
+            let swing = -detmath::cos(TAU * (t + leg_off));
+            p.add(top, axis_toward(c, top, c.forward, up), 20.0 * swing);
+            if let Some(&elbow) = arm.get(1) {
+                let elbow_deg = if arm.len() >= 4 {
+                    10.0 * swing
+                } else {
+                    10.0 * swing.max(0.0) + 4.0 * swing
+                };
+                p.add(elbow, axis_toward(c, elbow, c.forward, up), elbow_deg);
+            }
+        }
+        p.shift = left.scale(lat_at(t)) + up.scale(z_shift_at(t));
+        let (mut quats, shift) = (p.quats, p.shift);
+        for (rig, off) in rigs.iter().zip(offsets) {
+            let phase = (t + off).fract();
+            let (along, height) = if phase < duty {
+                (half - stance * (phase / duty), 0.0)
+            } else {
+                let u = (phase - duty) / (1.0 - duty);
+                let (u2, u3) = (u * u, u * u * u);
+                let slope = -speed * swing_time;
+                let x = (2.0 * u3 - 3.0 * u2 + 1.0) * -half
+                    + (u3 - 2.0 * u2 + u) * slope
+                    + (-2.0 * u3 + 3.0 * u2) * half
+                    + (u3 - u2) * slope;
+                (x, lift * 0.5 * (1.0 - detmath::cos(TAU * u)))
+            };
+            let contact = rig.contact + c.forward.scale(along) + up.scale(height);
+            solve_biped_leg(c, rig, &mut quats, shift, contact);
+        }
+        out.push(make_frame(c, &quats, shift));
+    }
+    Ok(Stride {
+        clip: Clip {
+            fps,
+            skeleton: c.skeleton.clone(),
+            frames: out,
+        },
+        speed,
+        period,
+        duty,
+        stance,
+    })
+}
+
+fn walk_legless(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
+    let mut chain: Vec<usize> = Vec::new();
+    if !body.back.is_empty() {
+        for &b in body.front.iter().rev() {
+            chain.push(b);
+        }
+        for &b in &body.back {
+            if !chain.contains(&b) {
+                chain.push(b);
+            }
+        }
+    } else if !body.front.is_empty() {
+        let first_fwd = c.skeleton.bones[body.front[0]].head.dot(c.forward);
+        let last_fwd = c.skeleton.bones[*body.front.last().unwrap()]
+            .tail
+            .dot(c.forward);
+        if first_fwd > last_fwd + 1e-6 {
+            chain.extend_from_slice(&body.front);
+        } else {
+            chain.extend(body.front.iter().rev().copied());
+        }
+    }
+    let movable: usize = chain.iter().filter(|&&b| !body.held[b]).count();
+    if chain.len() < 3 || movable < 2 {
+        return Err(format!(
+            "legless walk requires at least 3 body bones and 2 movable segments (found {} bones, {} movable)",
+            chain.len(),
+            movable
+        ));
+    }
+
+    let up = Vec3::new(0.0, 0.0, 1.0);
+    let left = left_of(c);
+    let root = c.root();
+    let speed = (0.6 * body.size).max(0.15);
+    let target_period = (0.8 + 0.35 * body.size).clamp(0.75, 1.5);
+    let frames = (target_period * fps).round().max(16.0) as usize;
+    let period = frames as f64 / fps;
+    let stance = speed * period;
+
+    let wave_k = 0.9 * std::f64::consts::PI;
+    let n = chain.len();
+    let base_amp = (72.0 / n as f64).clamp(6.0, 18.0);
+
+    let mut out = Vec::with_capacity(frames);
+    for f in 0..frames {
+        let t = f as f64 / frames as f64;
+        let mut p = Poser::new(c);
+        for (i, &b) in chain.iter().enumerate() {
+            if body.held[b] {
+                continue;
+            }
+            let s = i as f64 / (n - 1) as f64;
+            let mut amp = base_amp * (0.3 + 0.9 * s);
+            if b == root {
+                amp = amp.min(14.0);
+            }
+            let angle = amp * detmath::sin(TAU * t - wave_k * s);
+            let axis = axis_toward(c, b, left, up);
+            p.add(b, axis, angle);
+        }
+        for arm in &body.arms {
+            let top = arm[0];
+            p.add(
+                top,
+                axis_toward(c, top, up, c.forward),
+                20.0 * detmath::sin(TAU * t),
+            );
+            p.add(
+                top,
+                axis_toward(c, top, c.forward, up),
+                10.0 * detmath::cos(TAU * t),
+            );
+            if let Some(&elbow) = arm.get(1) {
+                p.add(
+                    elbow,
+                    axis_toward(c, elbow, up, c.forward),
+                    12.0 * detmath::sin(TAU * t - 0.8),
+                );
+            }
+        }
+        out.push(p.frame());
+    }
+    Ok(Stride {
+        clip: Clip {
+            fps,
+            skeleton: c.skeleton.clone(),
+            frames: out,
+        },
+        speed,
+        period,
+        duty: 1.0,
+        stance,
+    })
+}
+
+/// One looping locomotion cycle on the spot for a non-quadruped creature:
+/// alternating planted-foot walk for two-legged bodies (upright bipeds and
+/// hunched long-armed monsters) or a traveling sinusoidal lateral S-wave for
+/// legless bodies (serpents, wyrms, fish, cloaked spines).
+pub fn walk_stride(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
+    if !(fps > 0.0 && fps.is_finite()) {
+        return Err("fps must be finite and > 0".into());
+    }
+    if body.legs.len() == 2 {
+        walk_biped(c, body, fps)
+    } else if body.floats || body.legs.is_empty() {
+        walk_legless(c, body, fps)
+    } else {
+        Err(format!(
+            "walk_stride supports two-legged or legless bodies; this body has {} legs",
+            body.legs.len()
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::clip::{fk, Frame, Pose};
+    use crate::clip::{Bone, Frame, Pose, Skeleton};
     use crate::creature::rigcheck::{from_glb, Options};
     use crate::fixture::{humanoid, Naming};
-    use crate::math::Quat;
 
     fn rest(n: usize) -> Frame {
         Frame {
@@ -549,7 +986,6 @@ mod tests {
     /// arms whose hands stand on the ground, short legs, a head held to one
     /// side.
     fn knuckle_walker() -> Creature {
-        use crate::clip::{Bone, Skeleton};
         let b = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
             name: name.into(),
             parent,
@@ -659,5 +1095,391 @@ mod tests {
         let wrap = step(&clip.frames[71], &clip.frames[0]);
         let inner = step(&clip.frames[0], &clip.frames[1]);
         assert!(wrap <= inner * 1.5 + 1e-12, "wrap {} inner {}", wrap, inner);
+    }
+
+    fn foot_world_track(c: &Creature, s: &Stride, foot: usize) -> Vec<Vec3> {
+        let len = c.skeleton.bone_length(foot);
+        s.clip
+            .frames
+            .iter()
+            .enumerate()
+            .map(|(f, frame)| {
+                let posed = fk(&c.skeleton, frame);
+                let tail = posed[foot].head + posed[foot].rot.mul_vec(Vec3::new(0.0, len, 0.0));
+                tail + c.forward.scale(s.speed * f as f64 / s.clip.fps)
+            })
+            .collect()
+    }
+
+    fn assert_bone_lengths_preserved(c: &Creature, clip: &Clip) {
+        for frame in &clip.frames {
+            let posed = fk(&c.skeleton, frame);
+            for (i, bone) in c.skeleton.bones.iter().enumerate() {
+                if let Some(p) = bone.parent {
+                    let rest_d = (bone.head - c.skeleton.bones[p].head).length();
+                    let now_d = (posed[i].head - posed[p].head).length();
+                    assert!(
+                        (rest_d - now_d).abs() < 1e-6,
+                        "bone {} stretched: rest {} now {}",
+                        bone.name,
+                        rest_d,
+                        now_d
+                    );
+                }
+            }
+        }
+    }
+
+    fn hunched_monster() -> Creature {
+        let mk = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
+            name: name.into(),
+            parent,
+            head: Vec3::new(h[0], h[1], h[2]),
+            tail: Vec3::new(t[0], t[1], t[2]),
+        };
+        // Forward = -Y, left = +X, Z up. Hunched forward torso, 2 bent legs,
+        // 2 long hanging arms (not feet), and a short tail.
+        let bones = vec![
+            mk("hips", None, [0.0, 0.0, 0.85], [0.0, -0.05, 0.95]),
+            mk("spine1", Some(0), [0.0, -0.05, 0.95], [0.0, -0.18, 1.15]),
+            mk("chest", Some(1), [0.0, -0.18, 1.15], [0.0, -0.32, 1.32]),
+            mk("neck", Some(2), [0.0, -0.32, 1.32], [0.0, -0.44, 1.40]),
+            mk("head", Some(3), [0.0, -0.44, 1.40], [0.0, -0.58, 1.42]),
+            mk("tail0", Some(0), [0.0, 0.05, 0.84], [0.0, 0.25, 0.78]),
+            mk("tail1", Some(5), [0.0, 0.25, 0.78], [0.0, 0.45, 0.70]),
+            // Left & right legs (thigh -> shin -> foot), slightly bent knee
+            mk("thigh.L", Some(0), [0.14, 0.0, 0.82], [0.14, -0.08, 0.44]),
+            mk("shin.L", Some(7), [0.14, -0.08, 0.44], [0.14, 0.02, 0.08]),
+            mk("foot.L", Some(8), [0.14, 0.02, 0.08], [0.14, -0.12, 0.0]),
+            mk("thigh.R", Some(0), [-0.14, 0.0, 0.82], [-0.14, -0.08, 0.44]),
+            mk(
+                "shin.R",
+                Some(10),
+                [-0.14, -0.08, 0.44],
+                [-0.14, 0.02, 0.08],
+            ),
+            mk("foot.R", Some(11), [-0.14, 0.02, 0.08], [-0.14, -0.12, 0.0]),
+            // Long hanging arms (not in feet)
+            mk("arm1.L", Some(2), [0.22, -0.28, 1.28], [0.26, -0.30, 0.84]),
+            mk("arm2.L", Some(13), [0.26, -0.30, 0.84], [0.26, -0.36, 0.42]),
+            mk("hand.L", Some(14), [0.26, -0.36, 0.42], [0.26, -0.40, 0.26]),
+            mk(
+                "arm1.R",
+                Some(2),
+                [-0.22, -0.28, 1.28],
+                [-0.26, -0.30, 0.84],
+            ),
+            mk(
+                "arm2.R",
+                Some(16),
+                [-0.26, -0.30, 0.84],
+                [-0.26, -0.36, 0.42],
+            ),
+            mk(
+                "hand.R",
+                Some(17),
+                [-0.26, -0.36, 0.42],
+                [-0.26, -0.40, 0.26],
+            ),
+        ];
+        let sk = Skeleton { bones };
+        let (lo, hi) = skeleton_bounds(&sk);
+        crate::creature::profile::build(
+            "hunched_monster",
+            sk,
+            vec![9, 12],
+            Vec3::new(0.0, -1.0, 0.0),
+            lo,
+            hi,
+            64,
+        )
+    }
+
+    fn serpent(with_fins: bool) -> Creature {
+        let mk = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
+            name: name.into(),
+            parent,
+            head: Vec3::new(h[0], h[1], h[2]),
+            tail: Vec3::new(t[0], t[1], t[2]),
+        };
+        let mut bones = vec![
+            mk("seg0", None, [0.0, -0.6, 0.3], [0.0, -0.4, 0.3]),
+            mk("seg1", Some(0), [0.0, -0.4, 0.3], [0.0, -0.2, 0.3]),
+            mk("seg2", Some(1), [0.0, -0.2, 0.3], [0.0, 0.0, 0.3]),
+            mk("seg3", Some(2), [0.0, 0.0, 0.3], [0.0, 0.2, 0.3]),
+            mk("seg4", Some(3), [0.0, 0.2, 0.3], [0.0, 0.4, 0.3]),
+            mk("seg5", Some(4), [0.0, 0.4, 0.3], [0.0, 0.6, 0.3]),
+        ];
+        if with_fins {
+            bones.extend([
+                mk("fin1.L", Some(1), [0.05, -0.3, 0.3], [0.3, -0.25, 0.3]),
+                mk("fin2.L", Some(6), [0.3, -0.25, 0.3], [0.5, -0.2, 0.3]),
+                mk("fin1.R", Some(1), [-0.05, -0.3, 0.3], [-0.3, -0.25, 0.3]),
+                mk("fin2.R", Some(8), [-0.3, -0.25, 0.3], [-0.5, -0.2, 0.3]),
+            ]);
+        }
+        let sk = Skeleton { bones };
+        let (lo, hi) = skeleton_bounds(&sk);
+        crate::creature::profile::build(
+            "serpent",
+            sk,
+            vec![],
+            Vec3::new(0.0, -1.0, 0.0),
+            lo,
+            hi,
+            64,
+        )
+    }
+
+    #[test]
+    fn biped_walk_plants_feet_clears_ground_and_preserves_bones() {
+        let c = biped();
+        let b = read(&c);
+        let s = walk_stride(&c, &b, 30.0).unwrap();
+        let n = s.clip.frames.len();
+        assert!(n >= 16);
+        assert!((s.period - n as f64 / 30.0).abs() < 1e-12);
+        assert!(s.duty >= 0.60 && s.duty <= 0.65);
+        assert!(s.speed > 0.1 && s.stance > 0.15 * c.height);
+
+        let left = left_of(&c);
+        let mut feet = c.feet.clone();
+        feet.sort_by(|a, bb| {
+            c.skeleton.bones[*bb]
+                .tail
+                .dot(left)
+                .total_cmp(&c.skeleton.bones[*a].tail.dot(left))
+        });
+        let tracks: Vec<Vec<Vec3>> = feet.iter().map(|&f| foot_world_track(&c, &s, f)).collect();
+
+        // Double support: never both feet airborne on the same frame.
+        for f in 0..n {
+            let any_down = feet.iter().enumerate().any(|(i, &foot)| {
+                let rest_z = c.skeleton.bones[foot].tail.z;
+                tracks[i][f].z <= rest_z + 0.005 * c.height
+            });
+            assert!(any_down, "both feet airborne on frame {f}");
+        }
+
+        for (i, (&foot, off)) in feet.iter().zip([0.0, 0.5]).enumerate() {
+            let track = &tracks[i];
+            let down: Vec<Vec3> = (0..n)
+                .filter(|f| (*f as f64 / n as f64 + off).fract() < s.duty)
+                .map(|f| {
+                    let lap = ((f as f64 / n as f64 + off).floor()) * s.speed * s.period;
+                    track[f] - c.forward.scale(lap)
+                })
+                .collect();
+            assert!(down.len() >= 4);
+            let mean = down
+                .iter()
+                .fold(Vec3::ZERO, |a, v| a + *v)
+                .scale(1.0 / down.len() as f64);
+            let slide = down
+                .iter()
+                .map(|d| (*d - mean).length())
+                .fold(0.0, f64::max);
+            assert!(
+                slide < 0.005 * c.height && slide <= 0.025,
+                "foot {i} skated {slide} m"
+            );
+            let rest_z = c.skeleton.bones[foot].tail.z;
+            let top = track.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
+            let low = track.iter().map(|v| v.z).fold(f64::INFINITY, f64::min);
+            assert!(
+                top > rest_z + 0.03 * c.height,
+                "foot {i} lift {}",
+                top - rest_z
+            );
+            assert!(
+                low >= rest_z - 0.005 * c.height,
+                "foot {i} low {}",
+                low - rest_z
+            );
+        }
+        assert_bone_lengths_preserved(&c, &s.clip);
+
+        // Byte-deterministic across repeated calls.
+        let s2 = walk_stride(&c, &b, 30.0).unwrap();
+        for (a, z) in s.clip.frames.iter().zip(&s2.clip.frames) {
+            for (pa, pz) in a.poses.iter().zip(&z.poses) {
+                assert_eq!(pa.quat, pz.quat);
+                assert_eq!(pa.loc, pz.loc);
+            }
+        }
+    }
+
+    #[test]
+    fn hunched_long_armed_monster_walks_with_arm_counter_swing() {
+        let c = hunched_monster();
+        let b = read(&c);
+        assert_eq!(b.legs.len(), 2);
+        assert_eq!(b.arms.len(), 2);
+        let s = walk_stride(&c, &b, 24.0).unwrap();
+        let n = s.clip.frames.len();
+        assert!(n >= 16);
+        assert_bone_lengths_preserved(&c, &s.clip);
+
+        // Planted feet & swing clearance.
+        let left_foot = c.skeleton.index("foot.L").unwrap();
+        let right_foot = c.skeleton.index("foot.R").unwrap();
+        for (foot, off) in [(left_foot, 0.0), (right_foot, 0.5)] {
+            let track = foot_world_track(&c, &s, foot);
+            let down: Vec<Vec3> = (0..n)
+                .filter(|f| (*f as f64 / n as f64 + off).fract() < s.duty)
+                .map(|f| {
+                    let lap = ((f as f64 / n as f64 + off).floor()) * s.speed * s.period;
+                    track[f] - c.forward.scale(lap)
+                })
+                .collect();
+            let mean = down
+                .iter()
+                .fold(Vec3::ZERO, |a, v| a + *v)
+                .scale(1.0 / down.len() as f64);
+            let slide = down
+                .iter()
+                .map(|d| (*d - mean).length())
+                .fold(0.0, f64::max);
+            assert!(slide < 0.005 * c.height, "monster foot slide {slide}");
+            let rest_z = c.skeleton.bones[foot].tail.z;
+            let top = track.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
+            let low = track.iter().map(|v| v.z).fold(f64::INFINITY, f64::min);
+            assert!(top > rest_z + 0.03 * c.height);
+            assert!(low >= rest_z - 0.005 * c.height);
+        }
+
+        // Visible arm swing (> 10 deg) and anti-phase to ipsilateral leg.
+        let arm_l = c.skeleton.index("arm1.L").unwrap();
+        let hand_l = c.skeleton.index("hand.L").unwrap();
+        let max_arm_deg = s
+            .clip
+            .frames
+            .iter()
+            .map(|fr| turn_deg(fr.poses[arm_l].quat))
+            .fold(0.0, f64::max);
+        assert!(max_arm_deg > 10.0, "arm swing {max_arm_deg} deg");
+
+        let rest_foot_fwd = c.skeleton.bones[left_foot].tail.dot(c.forward);
+        let rest_hand_fwd = c.skeleton.bones[hand_l].tail.dot(c.forward);
+        let corr: f64 = s
+            .clip
+            .frames
+            .iter()
+            .map(|fr| {
+                let posed = fk(&c.skeleton, fr);
+                let foot_tail = crate::clip::tail_world(&c.skeleton, &posed, left_foot);
+                let hand_tail = crate::clip::tail_world(&c.skeleton, &posed, hand_l);
+                (foot_tail.dot(c.forward) - rest_foot_fwd)
+                    * (hand_tail.dot(c.forward) - rest_hand_fwd)
+            })
+            .sum();
+        assert!(
+            corr < 0.0,
+            "arm should counter-swing ipsilateral leg: {corr}"
+        );
+    }
+
+    #[test]
+    fn legless_serpent_produces_traveling_lateral_s_wave() {
+        for with_fins in [false, true] {
+            let c = serpent(with_fins);
+            let b = read(&c);
+            assert!(b.floats && b.legs.is_empty());
+            let s = walk_stride(&c, &b, 24.0).unwrap();
+            let n = s.clip.frames.len();
+            assert!(n >= 16);
+            assert!(s.speed > 0.1);
+            assert!((s.period - n as f64 / 24.0).abs() < 1e-12);
+            assert!((s.stance - s.speed * s.period).abs() < 1e-12);
+            assert_bone_lengths_preserved(&c, &s.clip);
+
+            let left = left_of(&c);
+            // Clear lateral excursion (> 0.02 * body.size).
+            let mut max_lat = 0.0_f64;
+            let mut seg0_lat = Vec::with_capacity(n);
+            let mut seg5_lat = Vec::with_capacity(n);
+            for fr in &s.clip.frames {
+                let posed = fk(&c.skeleton, fr);
+                for i in 0..6 {
+                    let tail = crate::clip::tail_world(&c.skeleton, &posed, i);
+                    let lat = tail.dot(left);
+                    max_lat = max_lat.max(lat.abs());
+                    if i == 0 {
+                        seg0_lat.push(lat);
+                    }
+                    if i == 5 {
+                        seg5_lat.push(lat);
+                    }
+                }
+            }
+            assert!(
+                max_lat > 0.02 * b.size,
+                "lateral excursion {max_lat} vs size {}",
+                b.size
+            );
+
+            // Traveling wave: tail peak lags head peak (not rigid in-phase wag).
+            let peak_frame = |vals: &[f64]| -> usize {
+                vals.iter()
+                    .enumerate()
+                    .max_by(|a, bb| a.1.total_cmp(bb.1))
+                    .unwrap()
+                    .0
+            };
+            let p0 = peak_frame(&seg0_lat);
+            let p5 = peak_frame(&seg5_lat);
+            let lag = (p5 + n - p0) % n;
+            assert!(
+                lag > 0 && lag < n / 2,
+                "expected head-to-tail lag, got {lag}/{n}"
+            );
+
+            if with_fins {
+                let fin_l = c.skeleton.index("fin1.L").unwrap();
+                let fin_turn = s
+                    .clip
+                    .frames
+                    .iter()
+                    .map(|fr| turn_deg(fr.poses[fin_l].quat))
+                    .fold(0.0, f64::max);
+                assert!(fin_turn > 10.0, "fin turn {fin_turn}");
+            }
+        }
+    }
+
+    #[test]
+    fn walk_stride_rejects_unsupported_and_degenerate_bodies() {
+        // 4-legged body rejected by walk_stride (quadrupeds use gait::stride).
+        let kw = knuckle_walker();
+        assert!(walk_stride(&kw, &read(&kw), 24.0).is_err());
+
+        // Single-legged body rejected.
+        let mut one_leg = hunched_monster();
+        one_leg.feet.truncate(1);
+        assert!(walk_stride(&one_leg, &read(&one_leg), 24.0).is_err());
+
+        // 1-bone and 2-bone legless skeletons rejected.
+        for count in [1usize, 2] {
+            let bones: Vec<Bone> = (0..count)
+                .map(|i| Bone {
+                    name: format!("b{i}"),
+                    parent: if i == 0 { None } else { Some(i - 1) },
+                    head: Vec3::new(0.0, i as f64 * 0.2, 0.2),
+                    tail: Vec3::new(0.0, (i + 1) as f64 * 0.2, 0.2),
+                })
+                .collect();
+            let sk = Skeleton { bones };
+            let (lo, hi) = skeleton_bounds(&sk);
+            let c = crate::creature::profile::build(
+                "tiny",
+                sk,
+                vec![],
+                Vec3::new(0.0, -1.0, 0.0),
+                lo,
+                hi,
+                64,
+            );
+            assert!(walk_stride(&c, &read(&c), 24.0).is_err());
+        }
     }
 }

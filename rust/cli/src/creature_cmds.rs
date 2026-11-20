@@ -561,23 +561,44 @@ pub fn cmd_clips(cmd: &Cmd) -> Result<String, (i32, String)> {
                 format!("the rig already has a clip named '{}'", clip_name),
             ));
         }
-        let clip = match clip_name {
-            "idle" => anybody::idle(&c, &body, (3.0 * fps).round() as usize, fps),
-            "attack" => anybody::attack(&c, &body, fps.round() as usize, fps),
-            "sweep" => anybody::sweep(&c, &body, (0.75 * fps).round() as usize, fps),
+        let (clip, note) = match clip_name {
+            "idle" => (
+                anybody::idle(&c, &body, (3.0 * fps).round() as usize, fps),
+                String::new(),
+            ),
+            "walk" => {
+                let s = anybody::walk_stride(&c, &body, fps).map_err(|e| (3, e))?;
+                let note = format!(
+                    ", move the body {:.3} m/s ({:.2} s a cycle, stance {:.3} m)",
+                    s.speed, s.period, s.stance
+                );
+                (s.clip, note)
+            }
+            "attack" => (
+                anybody::attack(&c, &body, fps.round() as usize, fps),
+                String::new(),
+            ),
+            "sweep" => (
+                anybody::sweep(&c, &body, (0.75 * fps).round() as usize, fps),
+                String::new(),
+            ),
             other => {
                 return Err((
                     1,
-                    format!("--clips: unknown clip '{}' (idle, attack, sweep)", other),
+                    format!(
+                        "--clips: unknown clip '{}' (idle, walk, attack, sweep)",
+                        other
+                    ),
                 ))
             }
         };
         doc = clip_to_glb(&doc, &clip, clip_name).map_err(|e| (3, e))?;
         r.push_str(&format!(
-            "clip {}: {} frames at {} fps\n",
+            "clip {}: {} frames at {} fps{}\n",
             clip_name,
             clip.frames.len(),
-            fps
+            fps,
+            note
         ));
     }
     doc.write(go).map_err(|e| (3, e))?;

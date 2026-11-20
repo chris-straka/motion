@@ -210,7 +210,7 @@ fn turn(c: &Creature, bone: usize, axis: Vec3, angle: f64) -> Quat {
 
 pub(super) struct Poser<'a> {
     c: &'a Creature,
-    quats: Vec<Quat>,
+    pub(super) quats: Vec<Quat>,
     /// Turning about it swings a hanging bone's tip forward, and lifts the
     /// tip of one that points forward.
     pitch: Vec3,
@@ -259,7 +259,7 @@ impl<'a> Poser<'a> {
 }
 
 /// A frame from every bone's pose turn and the whole body's move (world).
-fn make_frame(c: &Creature, quats: &[Quat], shift: Vec3) -> Frame {
+pub(super) fn make_frame(c: &Creature, quats: &[Quat], shift: Vec3) -> Frame {
     let root = c.root();
     // The root's own frame: its pose offset is in its rest axes.
     let b = &c.skeleton.bones[root];
@@ -372,41 +372,87 @@ pub struct Stride {
 
 /// A leg as the solver sees it: its joints' offsets in their parent
 /// bone's rest frame, and the paw that is kept flat.
-struct LegRig {
-    bones: Vec<usize>,
+pub(crate) struct LegRig {
+    pub(crate) bones: Vec<usize>,
     /// Bone k's joint to the next joint, in bone k's rest frame.
-    segs: Vec<Vec3>,
+    pub(crate) segs: Vec<Vec3>,
     /// The paw's rest orientation and its head-to-tail in the world.
-    paw_rest: Mat3,
-    paw_vec: Vec3,
+    pub(crate) paw_rest: Mat3,
+    pub(crate) paw_vec: Vec3,
     /// Where the paw's tail stands at rest.
-    contact: Vec3,
+    pub(crate) contact: Vec3,
     /// All the solved segments end to end.
-    reach: f64,
+    pub(crate) reach: f64,
     /// The top joint's height above the ankle at rest.
-    drop: f64,
+    pub(crate) drop: f64,
 }
 
-fn leg_rig(c: &Creature, leg: &Leg) -> LegRig {
+pub(crate) fn leg_rig_bones(c: &Creature, bones: &[usize], foot_start: usize) -> LegRig {
     let sk = &c.skeleton;
-    let n = leg.bones.len();
-    let paw = leg.bones[n - 1];
-    let segs: Vec<Vec3> = (0..n - 1)
+    let m = foot_start.min(bones.len().saturating_sub(1));
+    let paw = bones[m];
+    let tip = bones[bones.len() - 1];
+    let segs: Vec<Vec3> = (0..m)
         .map(|k| {
-            let (a, b) = (leg.bones[k], leg.bones[k + 1]);
+            let (a, b) = (bones[k], bones[k + 1]);
             sk.rest_world(a)
                 .transpose()
                 .mul_vec(sk.bones[b].head - sk.bones[a].head)
         })
         .collect();
     LegRig {
-        bones: leg.bones.clone(),
+        bones: bones.to_vec(),
         reach: segs.iter().map(|s| s.length()).sum(),
         segs,
         paw_rest: sk.rest_world(paw),
-        paw_vec: sk.bones[paw].tail - sk.bones[paw].head,
-        contact: sk.bones[paw].tail,
-        drop: sk.bones[leg.bones[0]].head.z - sk.bones[paw].head.z,
+        paw_vec: sk.bones[tip].tail - sk.bones[paw].head,
+        contact: sk.bones[tip].tail,
+        drop: sk.bones[bones[0]].head.z - sk.bones[paw].head.z,
+    }
+}
+
+fn leg_rig(c: &Creature, leg: &Leg) -> LegRig {
+    leg_rig_bones(c, &leg.bones, leg.bones.len().saturating_sub(1))
+}
+
+/// Aim the leg's solved upper segments along `pts[0..=m]` and keep the paw
+/// (and any toe bones below it) at rest orientation.
+pub(crate) fn apply_leg_pts(
+    c: &Creature,
+    rig: &LegRig,
+    posed: &[crate::clip::FkBone],
+    pts: &[Vec3],
+    quats: &mut [Quat],
+) {
+    let sk = &c.skeleton;
+    let m = rig.segs.len();
+    let top = rig.bones[0];
+    let mut parent_rot = match sk.bones[top].parent {
+        Some(p) => posed[p].rot,
+        None => Mat3::identity(),
+    };
+    for k in 0..m {
+        let b = rig.bones[k];
+        // The root's own turn was applied in `posed`; a leg's top bone is
+        // never the root (`parts` requires a body above it).
+        let carried = parent_rot.mul_mat(sk.rest_parent_rel(b).0);
+        let cur = carried.mul_vec(rig.segs[k]).normalized();
+        let want = (pts[k + 1] - pts[k]).normalized();
+        let axis = cur.cross(want);
+        let turn = if axis.length() < 1e-12 {
+            Quat::IDENTITY
+        } else {
+            let angle = detmath::acos(cur.dot(want).clamp(-1.0, 1.0));
+            Quat::from_axis_angle(carried.transpose().mul_vec(axis).normalized(), angle)
+        };
+        quats[b] = turn;
+        parent_rot = carried.mul_mat(turn.to_mat3());
+    }
+    let paw = rig.bones[m];
+    let carried = parent_rot.mul_mat(sk.rest_parent_rel(paw).0);
+    quats[paw] = Quat::from_mat3(carried.transpose().mul_mat(rig.paw_rest)).normalized();
+    for &toe in &rig.bones[m + 1..] {
+        quats[toe] = Quat::IDENTITY;
     }
 }
 
@@ -444,31 +490,7 @@ fn solve_leg(c: &Creature, rig: &LegRig, quats: &mut [Quat], shift: Vec3, contac
             pts[k + 1] = pts[k] + (pts[k + 1] - pts[k]).normalized().scale(lens[k]);
         }
     }
-    let top = rig.bones[0];
-    let mut parent_rot = match sk.bones[top].parent {
-        Some(p) => posed[p].rot,
-        None => Mat3::identity(),
-    };
-    for k in 0..m {
-        let b = rig.bones[k];
-        // The root's own turn was applied in `posed`; a leg's top bone is
-        // never the root (`parts` requires a body above it).
-        let carried = parent_rot.mul_mat(sk.rest_parent_rel(b).0);
-        let cur = carried.mul_vec(rig.segs[k]).normalized();
-        let want = (pts[k + 1] - pts[k]).normalized();
-        let axis = cur.cross(want);
-        let turn = if axis.length() < 1e-12 {
-            Quat::IDENTITY
-        } else {
-            let angle = detmath::acos(cur.dot(want).clamp(-1.0, 1.0));
-            Quat::from_axis_angle(carried.transpose().mul_vec(axis).normalized(), angle)
-        };
-        quats[b] = turn;
-        parent_rot = carried.mul_mat(turn.to_mat3());
-    }
-    let paw = rig.bones[m];
-    let carried = parent_rot.mul_mat(sk.rest_parent_rel(paw).0);
-    quats[paw] = Quat::from_mat3(carried.transpose().mul_mat(rig.paw_rest)).normalized();
+    apply_leg_pts(c, rig, &posed, &pts, quats);
 }
 
 /// One cycle of a walk or a trot with planted feet, sized from the
