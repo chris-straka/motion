@@ -18,26 +18,54 @@ Manifest format (paths relative to the manifest file):
 Usage:
     python3 tools/manifest.py --check data/manifest.json [--allow-mixamo-training]
 
-Exit 0 when every clip is licensed-clean and every file verifies.
+Exit 0 when every clip has a documented source row in docs/licensing.md,
+is licensed-clean, and every file verifies.
 """
 
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(HERE)
+DEFAULT_LICENSING_MD = os.path.join(REPO_ROOT, "docs", "licensing.md")
 
 # Licenses allowed for training. cmu-mocap additionally requires a
 # terms_snapshot (terms text as it stood on the download date).
 ALLOW = {"cmu-mocap", "owner-recorded"}
 
 # Explicitly blocked: non-commercial or research-only lineage, plus the
-# Hunyuan territory exclusion. Anything not in ALLOW is rejected too;
-# this set exists to name the known traps in error messages.
+# Hunyuan territory exclusion and video-generation model outputs. Anything not
+# in ALLOW is rejected too; this set exists to name the known traps in error
+# messages.
 BLOCKED = {
     "amass", "smpl", "smpl-x", "humanml3d", "research-only",
     "non-commercial", "hunyuan", "mixamo-training",
+    "veo", "omni", "veo-omni", "seedance", "kling", "minimax",
 }
+
+
+def documented_sources(licensing_md=None):
+    """Parse Source IDs documented in docs/licensing.md markdown tables."""
+    md_path = licensing_md or DEFAULT_LICENSING_MD
+    sources = set()
+    with open(md_path, encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip("|").split("|")]
+            if not cells:
+                continue
+            first = cells[0]
+            if not first or set(first) <= {"-", ":"} or first.lower() in ("source id", "source"):
+                continue
+            for token in re.findall(r"`([A-Za-z0-9._-]+)`", first):
+                sources.add(token.lower())
+    return sources
 
 
 def sha256_file(path):
@@ -48,10 +76,16 @@ def sha256_file(path):
     return h.hexdigest()
 
 
-def check_manifest(path, allow_mixamo_training=False):
+def check_manifest(path, allow_mixamo_training=False, licensing_md=None):
     """Returns (ok, lines). ok False on any violation or mismatch."""
     lines = []
     ok = True
+    try:
+        known_sources = documented_sources(licensing_md)
+    except OSError as exc:
+        return False, [f"ERROR: cannot read licensing table: {exc}"]
+    if not known_sources:
+        return False, ["ERROR: docs/licensing.md has no documented Source ID rows"]
     try:
         with open(path, encoding="utf-8") as f:
             doc = json.load(f)
@@ -72,6 +106,13 @@ def check_manifest(path, allow_mixamo_training=False):
             ok = False
             continue
         seen_ids.add(cid)
+        src = (clip.get("source") or "").strip().lower()
+        if not src or src not in known_sources:
+            lines.append(
+                f"{tag}: BLOCKED: source '{src or '<missing>'}' has no row in docs/licensing.md"
+            )
+            ok = False
+            continue
         lic = clip.get("license", "")
         if lic == "mixamo-training" and allow_mixamo_training:
             pass
@@ -97,7 +138,7 @@ def check_manifest(path, allow_mixamo_training=False):
             ok = False
             continue
         split = clip.get("split", "train")
-        lines.append(f"{tag}: OK [{lic}] split={split} sha={got[:12]}")
+        lines.append(f"{tag}: OK [{lic}] source={src} split={split} sha={got[:12]}")
     return ok, lines
 
 
@@ -106,8 +147,10 @@ def main(argv):
     parser.add_argument("--check", required=True, help="manifest JSON to validate")
     parser.add_argument("--allow-mixamo-training", action="store_true",
                         help="allow mixamo-training rows (owner approval required)")
+    parser.add_argument("--licensing", default=None,
+                        help="optional path to licensing markdown table (default docs/licensing.md)")
     args = parser.parse_args(argv)
-    ok, lines = check_manifest(args.check, args.allow_mixamo_training)
+    ok, lines = check_manifest(args.check, args.allow_mixamo_training, args.licensing)
     for line in lines:
         print(line)
     print("MANIFEST " + ("OK" if ok else "REJECTED"))
