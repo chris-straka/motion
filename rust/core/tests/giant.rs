@@ -24,7 +24,7 @@ fn standardized_body(walk: bool) -> Document {
 }
 
 fn grounded_walk_doc() -> Document {
-    let raw = standardized_body(true);
+    let raw = humanoid(Naming::Def, false, true).unwrap();
     let (cleaned, _) = clean_glb(&raw, &CleanOptions::default(), &[], None).unwrap();
     Document::parse(&cleaned.to_bytes().unwrap()).unwrap()
 }
