@@ -51,8 +51,6 @@ def run_cli(binary, args, timeout=300):
     stderr = proc.stderr.decode("utf-8", "replace")
     if proc.returncode != 0:
         raise CliError(f"motionforge exited {proc.returncode}: {stderr.strip() or stdout.strip()}")
-    if stderr.strip():
-        raise CliError(f"motionforge wrote to stderr: {stderr.strip()}")
     return stdout
 
 

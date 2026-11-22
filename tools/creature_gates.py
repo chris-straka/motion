@@ -397,7 +397,8 @@ def check(glb, work, quiet=False):
         cmd = [t["creature-rig"], "check", glb, "--json", sj, "--rom", rom]
         code, out, err = run(cmd)
         try:
-            s = json.load(open(sj))
+            with open(sj) as f:
+                s = json.load(f)
             sf = [f"{x['code']} {x.get('part', '')}: {x.get('detail', '')}" for x in s.get("findings", []) if x.get("severity") == "fail"]
             put("skeleton", code == 0 and s.get("pass") is True, cmd, code, score=s.get("score"), kind=s.get("kind"),
                 bones=s.get("bones"), fails=sf)
@@ -412,9 +413,14 @@ def check(glb, work, quiet=False):
         cmd = [t["creature-bench"], "anatomy", glb, "--json", aj]
         code, out, err = run(cmd)
         try:
-            a = json.load(open(aj))
+            with open(aj) as f:
+                a = json.load(f)
             af = [f"{x.get('code')}: {x.get('detail', '')}" for x in a.get("findings", []) if x.get("severity") == "fail"]
-            put("anatomy", not af and a.get("pass") is True, cmd, code, codes=sorted({x.split(":")[0] for x in af}),
+            codes = sorted({x.split(":")[0] for x in af})
+            ok = code == 0 and not af and a.get("pass") is True
+            if code != 0 and not af:
+                af = [f"creature-bench exited {code}" + (": " + tail(err or out) if (err or out).strip() else "")]
+            put("anatomy", ok, cmd, code, codes=codes,
                 fails=af, limb_pairs=a.get("limb_pairs"), head=a.get("head"))
         except (OSError, ValueError):
             put("anatomy", False, cmd, code, fails=["did not run: " + tail(err or out)])

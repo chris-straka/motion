@@ -142,5 +142,32 @@ class TestCliBuilders(unittest.TestCase):
         self.assertNotEqual(cli.find_motionforge_binary("/nonexistent"), "/nonexistent")
 
 
+class TestRunCliStderr(unittest.TestCase):
+    def _make_script(self, body):
+        f = tempfile.NamedTemporaryFile("w", suffix=".py", delete=False)
+        f.write("#!/usr/bin/env python3\n" + body)
+        f.close()
+        os.chmod(f.name, os.stat(f.name).st_mode | stat.S_IXUSR)
+        return f.name
+
+    def test_exit_zero_with_stderr_succeeds(self):
+        script = self._make_script(
+            "import sys\nsys.stdout.write('ok\\n')\nsys.stderr.write('wall: 1.2 ms\\n')\nsys.exit(0)\n"
+        )
+        try:
+            out = cli.run_cli(script, [])
+            self.assertEqual(out.strip(), "ok")
+        finally:
+            os.unlink(script)
+
+    def test_nonzero_exit_raises_cli_error(self):
+        script = self._make_script("import sys\nsys.stderr.write('boom\\n')\nsys.exit(2)\n")
+        try:
+            with self.assertRaises(cli.CliError):
+                cli.run_cli(script, [])
+        finally:
+            os.unlink(script)
+
+
 if __name__ == "__main__":
     unittest.main()

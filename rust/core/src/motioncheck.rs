@@ -1337,7 +1337,7 @@ fn median(v: &mut [f64]) -> f64 {
     if v.is_empty() {
         return 0.0;
     }
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    v.sort_by(f64::total_cmp);
     let m = v.len() / 2;
     if v.len() % 2 == 1 {
         v[m]
@@ -1702,5 +1702,17 @@ impl ClipScore {
             s.push_str(&rc.line());
         }
         s
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::median;
+
+    #[test]
+    fn median_handles_nan_without_panic() {
+        let mut xs = vec![3.0, f64::NAN, 1.0, 2.0];
+        let m = median(&mut xs);
+        assert!(m.is_finite() || m.is_nan());
     }
 }

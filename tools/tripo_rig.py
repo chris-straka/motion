@@ -291,11 +291,12 @@ def main():
         else:
             # A file left by an earlier run must not pass for this fix.
             fresh(fixed)
+            fresh(base + ".sheet.png")
             cmd = [wf, "fix", std, "--out", fixed, "--sheet", base + ".sheet.png"] + poses + shlex.split(a.fix_args)
             r = run(cmd, timeout=a.fix_timeout)
             t["fix"] = {"code": r["code"], "secs": r["secs"]}
-            if r["code"] != 0 or not os.path.exists(fixed):
-                t["fix"]["error"] = tail(r["err"] or r["out"])
+            if r["code"] not in (0, 1) or not os.path.exists(fixed):
+                t["fix"]["error"] = tail(r["err"] or r["out"]) or f"fix exited {r['code']}"
                 shutil.copyfile(std, fixed)
         final = check(wf, fixed, poses)
         if poses:
@@ -367,8 +368,16 @@ def main():
         shutil.copyfile(base + ".sheet.png", os.path.join(a.out, name + ".sheet.png"))
     else:
         rom = os.path.join(a.out, name + ".rom.ron")
-        run([wf, "sheet", os.path.join(a.out, name + ".glb"), "--out", os.path.join(a.out, name + ".sheet.png")]
-            + (["--poses", rom] if os.path.exists(rom) else []))
+        sheet_out = os.path.join(a.out, name + ".sheet.png")
+        fresh(sheet_out)
+        r_sheet = run([wf, "sheet", os.path.join(a.out, name + ".glb"), "--out", sheet_out]
+                      + (["--poses", rom] if os.path.exists(rom) else []))
+        report["steps"]["sheet"] = {"code": r_sheet["code"], "secs": r_sheet["secs"]}
+        if r_sheet["code"] not in (0, 1) or not os.path.exists(sheet_out):
+            report["steps"]["sheet"]["error"] = tail(r_sheet["err"] or r_sheet["out"]) or f"sheet exited {r_sheet['code']}"
+            save()
+            print(f"{name}: sheet failed (exit {r_sheet['code']}): {report['steps']['sheet']['error']}", file=sys.stderr)
+            return 2
     report["best_seed"] = best["seed"]
     report["best_cut"] = bool(best.get("cut"))
     report["ok"] = bool(best["pass"] and best["contract"])
@@ -387,13 +396,24 @@ def main():
 
 def check(wf, glb, poses=()):
     r = run([wf, "check", glb, "--json"] + list(poses), timeout=1800)
+    if r["code"] not in (0, 1):
+        return {
+            "code": r["code"],
+            "score": 0.0,
+            "pass": False,
+            "fails": [f"check failed (exit {r['code']}): " + tail(r["err"] or r["out"], 120)],
+            "class": "?",
+        }
     try:
         d = json.loads(r["out"])
     except ValueError:
-        return {"score": 0.0, "pass": False, "fails": ["check did not run: " + tail(r["err"], 120)], "class": "?"}
+        return {"code": r["code"], "score": 0.0, "pass": False, "fails": ["check did not run: " + tail(r["err"], 120)], "class": "?"}
     fails = [f"{f.get('code')} {f.get('region')}: {f.get('detail')}" for f in d.get("findings", [])
              if f.get("severity") == "fail"]
-    return {"score": d.get("score", 0.0), "pass": bool(d.get("pass")), "fails": fails, "class": d.get("class"),
+    passed = r["code"] == 0 and bool(d.get("pass")) and not fails
+    if r["code"] != 0 and not fails:
+        fails.append(f"check exited {r['code']}")
+    return {"code": r["code"], "score": d.get("score", 0.0), "pass": passed, "fails": fails, "class": d.get("class"),
             "verts": d.get("verts"), "bones": d.get("bones"), "poses": d.get("poses")}
 
 
