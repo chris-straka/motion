@@ -1,11 +1,13 @@
 # motion (command `motionforge`)
 
-Game-animation sidekick for Bevy/Rust games: retarget
-assist, motion stylizer, physics pass, ML AutoPose, and the GLB rig
-adapters assetgen's character chain runs (standardize, animate,
-pose-test; `docs/adapters.md`). One person,
-one panel, no mocap cleanup marathons. Plan and gates: `PLAN.md`;
-measured numbers: `docs/measurements.md`.
+Folder and GitHub repo `motion` (`chris-straka/motion`), CLI command and
+Blender extension `motionforge`.
+
+Game-animation sidekick for Bevy/Rust games: retarget assist, motion stylizer,
+physics pass, ML AutoPose, and the GLB rig adapters assetgen's character chain
+runs (standardize, animate, pose-test; `docs/adapters.md`). One person, one
+panel, no mocap cleanup marathons. Plan and gates: `PLAN.md`; measured numbers:
+`docs/measurements.md`.
 
 ## Layout
 
@@ -47,6 +49,8 @@ motionforge clip-info --input IN.json
 motionforge standardize --input rig.glb --output std.glb [--class humanoid]
 motionforge animate --input std.glb --clips clips/ --output animated.glb \\
     [--pick "lib.glb:Sword_Regular_A=attack_1,..."] [--refit-width|--no-refit-width] [--no-contact] [--weapon R|L|none]
+motionforge attack --rig std.glb --preset cleave|backcut|sweep|thrust|all --output out.glb [--grips grips.ron]
+motionforge motion check rigged.glb [--clip NAME] [--camera game --blade-pose socket] [--json]
 motionforge giant --input animated.glb --output giant.glb --scale 4.0 [--mask full|arms-only] [--pin-pelvis]
 motionforge creature-clips --creature c.json --glb-in rig.glb --glb-out out.glb --clips idle,walk,attack
 motionforge grip --input lib-with-weapon-clips.glb --output lib.glb
@@ -79,6 +83,8 @@ cd rust && cargo fmt --all --check && cargo test --locked --release
 python3 -m unittest discover -s blender/tests -p "test_pure.py"
 python3 -m unittest discover -s python/tests -p "test_*.py"
 python3 -m unittest discover -s tools/tests -p "test_*.py"
+python3 tools/bench/pro_bench.py planted
+bash tools/gate/carbon.sh                            # guarded Carbon/Neon gate
 /Applications/Blender.app/Contents/MacOS/Blender --background --factory-startup \\
     --python blender/tests/test_headless.py
 python3 -m unittest blender.tests.test_batch

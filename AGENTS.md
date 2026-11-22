@@ -1,5 +1,8 @@
 # motion (command `motionforge`) — agent notes
 
+Folder and GitHub repo: `motion` (`chris-straka/motion`); CLI command and
+Blender extension: `motionforge`.
+
 One rules file only: this `AGENTS.md` is it — never create a `CLAUDE.md` in this folder (Muse ignores it and warns while both exist).
 
 Game-animation sidekick for Bevy games: retarget assist, motion stylizer,
@@ -98,5 +101,5 @@ acos, exp}` instead of the `f64` methods (Apple's and glibc's libm
 - `~/Games/_blender/retopo` — mesh stage; the structural template
   (workspace layout, subprocess-over-files split, golden tests).
 - The games (`~/Games/<game>`, Bevy, Rust): retargeted clips land
-  there via rigforge's deform-only GLB export; `gk validate assets`
-  is the downstream gate.
+  there via `gamerig`'s (formerly `rigforge`) deform-only GLB export;
+  `gk validate assets` is the downstream gate.

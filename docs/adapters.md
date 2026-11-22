@@ -16,7 +16,7 @@ motionforge adapter pose-test   IN.glb OUT.glb RESULT.json [--clips LIB] [--blen
 motionforge adapter animate     IN.glb OUT.glb RESULT.json --clips LIB [--fps 30]
 ```
 
-`RESULT.json` matches the weightforge adapter's schema:
+`RESULT.json` matches the `meshweights` (formerly `weightforge`) adapter's schema:
 `{"ok": bool, "outputs": [paths relative to RESULT.json's folder],
 "tool": "motionforge", "version", "stage", "<stage>": {details},
 "reason"?}`. Exit 0 = ok; 1 = the stage ran and failed (`ok: false`,

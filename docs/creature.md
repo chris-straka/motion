@@ -99,7 +99,7 @@ parts off its profile (the four chains that end in feet, front or hind by
 where they leave the body; the spine between them; the chain reaching
 forward from the chest; the one reaching back from the hips) and writes
 clips on that skeleton into the GLB, and its range of motion as a
-weightforge pose set (`weights check --poses rom.ron`). `tools/tripo_rig.py`
+`meshweights` (formerly `weightforge`) pose set (`weights check --poses rom.ron`). `tools/tripo_rig.py`
 (`docs/tripo-rig.md`) runs it for every creature.
 
 **`walk` and `trot` keep their feet where they are put** (`gait::stride`,

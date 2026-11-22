@@ -83,14 +83,10 @@ arms-only --pin-pelvis`, `42f6a74`, fleet audit `xxzx4eja`).
       as rough; body-mode exaggeration should stop at the contact proxies
       and take keys from the weapon hand's extremes too.
 
-- [x] Contact pass v2 (`docs/contact.md`, `docs/width-refit.md`): upper arm
-      (armpit), shin proxies, arm-vs-arm contact with free-hand weapon priority,
-      per-frame source slack, and width-first retargeting (landed 2026-11-19 in
-      `8413c42`).
 - [ ] Corrective shapes if the owner wants the deformation gate to pass
       real clips (`docs/adapters.md` "Shoulder helpers"): pose-space
-      targets baked as glTF morph weights per clip, and weightforge
-      evaluating morph targets.
+      targets baked as glTF morph weights per clip, and `meshweights`
+      (formerly `weightforge`) evaluating morph targets.
 
 - [ ] GLB adapters v2 (`docs/adapters.md` limits): foot pinning in
       `animate` when proportions differ; quadruped ROM poses and clips;
@@ -107,9 +103,9 @@ arms-only --pin-pelvis`, `42f6a74`, fleet audit `xxzx4eja`).
       root rotation is re-expressed. Mirror #5's tests (invariance,
       Python<->Rust cross-check golden, headless Blender check).
 - [ ] **Retarget with unmapped intermediate bones** (design call).
-      Transfer copies each bone's local motion (same as rigforge's
-      reference), so an unmapped source bone's motion is dropped, not
-      folded into the next mapped bone. Property check: full map
+      Transfer copies each bone's local motion (same as `gamerig`'s
+      formerly `rigforge` reference), so an unmapped source bone's motion is
+      dropped, not folded into the next mapped bone. Property check: full map
       matches world rotation deltas to 7e-16; skipping the middle bone
       of a 3-chain differs by up to 0.93. Only matters for targets
       with fewer bones than the source.

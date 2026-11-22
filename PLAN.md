@@ -3,13 +3,14 @@
 Written 2026-10-01 for the coding agents who will build it. Goal: make
 game animation for a stylized action game (Bevy/Rust) fast for one
 person. Context: `~/Games/_tools/roadmap.md`, `~/Games/_tools/asset-pipeline.md`
-("Animation" section). The rig is rigforge's (`~/Games/_blender/gamerig`,
-Rigify-based, presets `biped_hero` and `quadruped_stalker`).
+("Animation" section). The rig is `gamerig`'s (formerly `rigforge`,
+`~/Games/_blender/gamerig`, Rigify-based, presets `biped_hero` and
+`quadruped_stalker`).
 
 ## What it does (three features, in build order)
 
 1. **Retarget assist**: one click from a Mixamo FBX, Cascadeur export,
-   or video-to-motion clip onto the rigforge rig, saved as a Blender
+   or video-to-motion clip onto the `gamerig` rig, saved as a Blender
    action and exported as a game GLB. Checks bone mapping, foot contacts
    (no sliding), and root motion.
 2. **Motion stylizer**: realistic clip in, snappy game motion out. Find
@@ -41,7 +42,7 @@ Rigify-based, presets `biped_hero` and `quadruped_stalker`).
 
 - Input: positions (and optionally rotations) of 3-6 "effector" joints
   plus the character's bone lengths. Output: rotations for every
-  deform bone of the rigforge rig.
+  deform bone of the `gamerig` rig.
 - Model: start small (MLP); a small transformer only if the MLP fails
   the gate. Train with random effector subsets so any combination works.
 - Data, licensing is the hard constraint: commercial-safe only.
@@ -51,20 +52,20 @@ Rigify-based, presets `biped_hero` and `quadruped_stalker`).
   - BLOCKED: AMASS / SMPL-based data (non-commercial), anything under a
     research-only license. Mixamo: allowed in games, but check its terms
     before training on it; default exclude.
-  - Retarget all data onto the rigforge skeleton first (feature 1).
+  - Retarget all data onto the `gamerig` skeleton first (feature 1).
 - Gates: on held-out clips, predicted joint positions within a set
   error, no joint-limit violations, no foot penetration; runs under
   10 ms per pose on CPU.
 
 ## Phases
 
-| Phase | Builds | Gate |
-|---|---|---|
-| P0 | Repo scaffold (Rust workspace, Blender extension, AGENTS.md: no game assets committed, determinism, licensing rules) | builds, CLI `--help` |
-| P1 | Retarget assist | a Mixamo clip plays on the `biped_hero` rig in the Bevy game with no foot sliding |
-| P2 | Motion stylizer | owner prefers the stylized version of 3 test clips |
-| P3 | Data pipeline for AutoPose (licensed sources only, retargeted) | dataset manifest with source + license per clip |
-| P4 | AutoPose training + Rust inference + Blender tool | gates above; owner keyframes one attack faster than without it |
+| Phase | Builds                                                                                                               | Gate                                                                              |
+| ----- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| P0    | Repo scaffold (Rust workspace, Blender extension, AGENTS.md: no game assets committed, determinism, licensing rules) | builds, CLI `--help`                                                              |
+| P1    | Retarget assist                                                                                                      | a Mixamo clip plays on the `biped_hero` rig in the Bevy game with no foot sliding |
+| P2    | Motion stylizer                                                                                                      | owner prefers the stylized version of 3 test clips                                |
+| P3    | Data pipeline for AutoPose (licensed sources only, retargeted)                                                       | dataset manifest with source + license per clip                                   |
+| P4    | AutoPose training + Rust inference + Blender tool                                                                    | gates above; owner keyframes one attack faster than without it                    |
 
 ## genforge adapters (built 2026-10-05)
 
@@ -74,7 +75,7 @@ humanoid skeleton so every character shares clips), `animate`
 (retarget clip GLBs onto the character) and `pose-test` (range-of-motion
 sheet for the owner's approval). Built as GLB commands in the Rust core
 plus `motionforge adapter <stage> IN OUT RESULT.json`, the same
-contract as weightforge's adapter. Spec, mapping rules, limits and
+contract as `meshweights`'s (formerly `weightforge`) adapter. Spec, mapping rules, limits and
 numbers: `docs/adapters.md`. Gate: fixture tests in every naming style,
 a real game rig through all three, and a genforge rehearsal run end to
 end (genforge `docs/phase-7.md`).
@@ -88,7 +89,7 @@ Spec, formats, limits and numbers: `docs/creature.md` and
 `docs/measurements.md` ("Creature motion").
 
 - Rust core `motion_core::creature` + CLI `creature-profile | -poses |
-  -motion | -project | -solve | -compare`: a creature profile from a
+-motion | -project | -solve | -compare`: a creature profile from a
   skintokens rig (rig checks pick the best of several tries), two fixed
   known cameras, random poses within the joint limits, the exam motion,
   two-view consistency check + triangulation + solve with limits,

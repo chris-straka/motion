@@ -7,13 +7,13 @@ rigged, skinned GLB with clips, a pose sheet and a report:
         [--kind auto|human|creature] [--class hero|npc|monster]
         [--seeds 1,2,3] [--clips LIBRARY.glb --pick walk=walk,attack_1=attack]
 
-It needs `skintokens`, `weights` (weightforge), `rfcheck`, this repo's
-`motionforge` and Blender; each is found by flag, environment
-(`SKINTOKENS_BIN`, `WEIGHTS_BIN`, `RFCHECK_BIN`, `MOTIONFORGE_BIN`,
-`BLENDER`), `PATH`, then the sibling repo's `target/release`. Exit 0: the
-best try passes weightforge's gate (no failing finding) and rfcheck's
-contract. Exit 1: it doesn't; the GLB is still written and `report.json`
-says what failed. Exit 2: a step could not run.
+It needs `skintokens`, `weights` (`meshweights`, formerly `weightforge`),
+`rfcheck`, this repo's (`motion`) `motionforge`, and Blender; each is found by
+flag, environment (`SKINTOKENS_BIN`, `WEIGHTS_BIN`, `RFCHECK_BIN`,
+`MOTIONFORGE_BIN`, `BLENDER`), `PATH`, then the sibling repo's `target/release`.
+Exit 0: the best try passes `meshweights`'s gate (no failing finding) and
+`rfcheck`'s contract. Exit 1: it doesn't; the GLB is still written and
+`report.json` says what failed. Exit 2: a step could not run.
 
 ## The steps
 

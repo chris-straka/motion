@@ -1,9 +1,9 @@
 # Motion check: a score for how a clip looks
 
-`motionforge motion check <rigged.glb> [--clip NAME] [--json]` measures
-every clip on a rigged character (`rust/core/src/motioncheck.rs`). It
-reads the GLB only: the posed skeleton per frame, and the skinned mesh for
-limbs inside the body. It changes nothing.
+`motionforge motion check <rigged.glb> [--clip NAME] [--json]` (repo `motion`,
+command `motionforge`) measures every clip on a rigged character
+(`rust/core/src/motioncheck.rs`). It reads the GLB only: the posed skeleton per
+frame, and the skinned mesh for limbs inside the body. It changes nothing.
 
 Why these measures: the automatic measures that track what people prefer
 in generated and retargeted motion are foot skate, limbs passing through
@@ -160,18 +160,20 @@ and a giant and numbers compare across characters.
     score is now the weakest of body, sweep and arc (the hold's
     bonus aside), and the grip caps it the same way.
   - **Grip** (`grip` in the JSON, when the rig holds a blade): over
-    load to settle, the handle's middle against the palm (the mean
-    finger root, else the hand joint; a palm grip puts it about
-    3.3 cm off the knuckle line, the good bound is 4.5 cm and
-    11.5 cm is not in the hand), the fingers' mean turn from rest
-    (each joint's rotation against its parent, now against rest —
-    by joint positions a rig that rests with curved fingers reads
-    half a fist with its fingers open), and the fingertips'
-    distance to the handle's line (reported). Score: the weaker of
-    handle-in-palm and fingers-closed; `ok` at 0.5. Finger chains
-    come from the name mapper, else the hand's own child chains
-    (the game rig's single three-bone finger); with no measurable
-    fingers the handle alone is judged and `fingers` says so.
+    load to settle, the handle's middle against the palm (for skinned hands,
+    since `motion-1` `153822d`, measured directly from the posed palm and finger
+    skin via `readcam::skin_grip_of` at the bottom of this page; the bone-ratio
+    fallback when no skinned hand triangles exist uses the mean finger root,
+    else the hand joint, where a palm grip puts it about 3.3 cm off the knuckle
+    line, good bound 4.5 cm, bad 11.5 cm), the fingers' mean turn from rest
+    (each joint's rotation against its parent, now against rest — by joint
+    positions a rig that rests with curved fingers reads half a fist with its
+    fingers open), and the fingertips' distance to the handle's line (reported).
+    Score: the weaker of handle-in-palm (plus skin circumference wrap on skinned
+    hands) and fingers-closed; `ok` at 0.5. Finger chains come from the name
+    mapper, else the hand's own child chains (the game rig's single three-bone
+    finger); with no measurable fingers the handle alone is judged and `fingers`
+    says so.
 
   **Calibrated on the game's own clips** (2026-11-15;
   `motionforge motion check andras_rig.glb --camera game
@@ -225,8 +227,11 @@ and a giant and numbers compare across characters.
     `Hand -> Finger1` and caps the distal curl at `0.55` of a fist;
     `single_finger_axes` derives the palm from the hand's geometry.
   - `attack::Solver::place_hand` gained a damped fixed-point pass for an
-    elbow/wrist 2-cycle, `PALM_WRIST_MAX_DEG = 35 deg` and `FOREARM_ROLL_DEG
-= 105 deg`. The "~83 deg wrist" it is said to remove: not measured.
+    elbow/wrist 2-cycle, `PALM_WRIST_MAX_DEG = 35 deg` and `FOREARM_ROLL_DEG =
+105 deg`. The "~83 deg wrist" it is said to remove: not measured (`motion-6`
+    `335da4b` later restored `FOREARM_ROLL_DEG = 80.0` after
+    `weights check --motion` fleet job `q4zkw4ju` measured `+79%` twistless
+    forearm volume collapse at `105 deg`).
 
   **2026-11-18 (the measure restored)**: the 2026-11-16 change also moved
   the grip measure to the solver's own `0.55` palm point and lowered the

@@ -110,9 +110,11 @@ knuckle-line socket hit the body 42 times, the found grip 0.
 
 ## Limits
 
-- Hands, forearms and one held weapon against torso, head and thighs.
-  Upper arms (the armpit), the legs and the other arm are not proxies.
+- In `8413c42` (`motion-13`, `docs/width-refit.md`), `contact.rs` added upper-arm
+  (armpit), shin, and arm-vs-arm proxies (free hand moves first on weapon clips)
+  plus per-frame source slack alongside `width_refit.rs`.
 - Locomotion clips with a drawn weapon get no blade proxy unless their
   names match `--weapon-clips`.
-- The deformation gate is separate: weightforge's recheck measures skin
-  stretch/volume in the same clips (see the README's genforge note).
+- The deformation gate is separate: `meshweights`'s (formerly `weightforge`)
+  recheck measures skin stretch/volume in the same clips (see the README's
+  genforge note).
