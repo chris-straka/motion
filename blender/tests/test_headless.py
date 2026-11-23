@@ -150,6 +150,8 @@ def main():
         check(hasattr(bpy.ops.motionforge, "physics_fix"), "physics_fix registered")
         check(hasattr(bpy.ops.motionforge, "physics_overlay"), "physics_overlay registered")
         check(hasattr(bpy.ops.motionforge, "autopose"), "autopose registered")
+        check(hasattr(bpy.ops.motionforge, "validate_slotted"), "validate_slotted registered")
+        check(hasattr(bpy.ops.motionforge, "export_slotted_glb"), "export_slotted_glb registered")
 
         binary = cli.find_motionforge_binary("")
         check(bool(binary), f"CLI binary found ({binary})")
@@ -428,6 +430,14 @@ def main():
         arm = make_armature("NoAction", CHAIN)
         bpy.context.view_layer.objects.active = arm
         check_cancel("stylize with no action", lambda: bpy.ops.motionforge.stylize())
+
+        # --- slotted actions contract & GLB round-trip -------------------
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        if tests_dir not in sys.path:
+            sys.path.insert(0, tests_dir)
+        import test_slotted_actions
+
+        test_slotted_actions.run_tests(manage_addon=False)
 
         print("ALL HEADLESS CHECKS PASSED")
     finally:

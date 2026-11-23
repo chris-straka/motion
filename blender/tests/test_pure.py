@@ -6,8 +6,10 @@ Run with system Python (no Blender, stdlib only):
 """
 
 import importlib.util
+import json
 import os
 import stat
+import struct
 import tempfile
 import unittest
 
@@ -26,6 +28,7 @@ def _load(name):
 # which needs bpy.
 cli = _load("cli")
 quats = _load("quats")
+slot_contract = _load("slot_contract")
 
 
 class TestQuats(unittest.TestCase):
@@ -167,6 +170,134 @@ class TestRunCliStderr(unittest.TestCase):
                 cli.run_cli(script, [])
         finally:
             os.unlink(script)
+
+
+class TestSlotContract(unittest.TestCase):
+    def test_canonical_and_suffix_rejection(self):
+        self.assertEqual(slot_contract.CANONICAL_SLOTS, ("hero", "weapon", "shield", "helper"))
+        for ok in ("hero", "weapon", "shield", "helper", "sword_prop"):
+            self.assertFalse(slot_contract.is_suffixed_slot_name(ok))
+            self.assertEqual(slot_contract.validate_slot_name(ok), ok)
+        for bad in ("weapon_1", "weapon_2", "hero.001", "shield.002", "helper_01", "", " hero "):
+            with self.assertRaises(slot_contract.SlotContractError):
+                slot_contract.validate_slot_name(bad)
+        with self.assertRaises(slot_contract.SlotContractError):
+            slot_contract.validate_slot_name("custom_prop", allowed_slots=slot_contract.CANONICAL_SLOTS)
+
+    def test_expected_and_duplicate_slots(self):
+        self.assertEqual(
+            slot_contract.validate_slot_names(
+                ["hero", "weapon"],
+                expected_slots=("hero", "weapon"),
+                allowed_slots=slot_contract.CANONICAL_SLOTS,
+            ),
+            ["hero", "weapon"],
+        )
+        for bad_list in (
+            ["hero", "Hero"],
+            ["hero"],
+            ["hero", "shield"],
+            ["hero", "weapon", "weapon_1"],
+        ):
+            with self.assertRaises(slot_contract.SlotContractError):
+                slot_contract.validate_slot_names(bad_list, expected_slots=("hero", "weapon"))
+
+    def test_timing_parity_and_cue_sync(self):
+        slot_contract.validate_slot_timings(
+            {"hero": [1.0, 6.0, 12.0], "weapon": [1.0, 6.0, 12.0]},
+            cue_frames={"start": 1, "hit": 6, "end": 12},
+        )
+        # Frame range drift (weapon shifted +1 frame)
+        with self.assertRaises(slot_contract.SlotContractError):
+            slot_contract.validate_slot_timings(
+                {"hero": [1.0, 6.0, 12.0], "weapon": [2.0, 7.0, 13.0]},
+                cue_frames={"start": 1, "hit": 6, "end": 12},
+            )
+        # Same endpoints, hit cue drifted (6 vs 7)
+        with self.assertRaises(slot_contract.SlotContractError):
+            slot_contract.validate_slot_timings(
+                {"hero": [1.0, 6.0, 12.0], "weapon": [1.0, 7.0, 12.0]},
+                cue_frames={"start": 1, "hit": 6, "end": 12},
+            )
+        # Empty slot rejected
+        with self.assertRaises(slot_contract.SlotContractError):
+            slot_contract.validate_slot_timings({"hero": [1.0, 6.0], "weapon": []})
+
+    def _write_test_glb(self, path, hero_frames, weapon_frames, slot_names=("hero", "weapon")):
+        fps = 30.0
+        bin_buf = bytearray()
+
+        def push_times(frames):
+            off = len(bin_buf)
+            for f in frames:
+                bin_buf.extend(struct.pack("<f", float(f) / fps))
+            return off, len(frames)
+
+        off_h, cnt_h = push_times(hero_frames)
+        off_w, cnt_w = push_times(weapon_frames)
+        while len(bin_buf) % 4 != 0:
+            bin_buf.append(0)
+        doc = {
+            "asset": {"version": "2.0"},
+            "scenes": [{
+                "nodes": [0, 1],
+                "extras": {"motionforge_slotted": {"action": "Slash", "fps": 30, "fps_base": 1.0}},
+            }],
+            "nodes": [
+                {"name": "HeroArm", "extras": {"motionforge_slot": slot_names[0]}},
+                {"name": "WeaponProp", "extras": {"motionforge_slot": slot_names[1]}},
+            ],
+            "buffers": [{"byteLength": len(bin_buf)}],
+            "bufferViews": [
+                {"buffer": 0, "byteOffset": off_h, "byteLength": cnt_h * 4},
+                {"buffer": 0, "byteOffset": off_w, "byteLength": cnt_w * 4},
+            ],
+            "accessors": [
+                {"bufferView": 0, "componentType": 5126, "count": cnt_h, "type": "SCALAR"},
+                {"bufferView": 1, "componentType": 5126, "count": cnt_w, "type": "SCALAR"},
+            ],
+            "animations": [{
+                "name": "Slash",
+                "samplers": [{"input": 0, "output": 0}, {"input": 1, "output": 1}],
+                "channels": [
+                    {"sampler": 0, "target": {"node": 0, "path": "rotation"}},
+                    {"sampler": 1, "target": {"node": 1, "path": "translation"}},
+                ],
+            }],
+        }
+        jbytes = json.dumps(doc).encode("utf-8")
+        while len(jbytes) % 4 != 0:
+            jbytes += b" "
+        total = 12 + 8 + len(jbytes) + 8 + len(bin_buf)
+        with open(path, "wb") as fh:
+            fh.write(struct.pack("<III", 0x46546C67, 2, total))
+            fh.write(struct.pack("<II", len(jbytes), 0x4E4F534A))
+            fh.write(jbytes)
+            fh.write(struct.pack("<II", len(bin_buf), 0x004E4942))
+            fh.write(bin_buf)
+
+    def test_glb_slot_timings_and_cli_exit_codes(self):
+        with tempfile.TemporaryDirectory() as td:
+            ok_glb = os.path.join(td, "ok.glb")
+            self._write_test_glb(ok_glb, [1, 6, 12], [1, 6, 12])
+            self.assertEqual(
+                slot_contract.main(["validate", ok_glb, "--expect", "hero,weapon", "--cues", "1,6,12", "--canonical-only"]),
+                0,
+            )
+
+            bad_suffix = os.path.join(td, "bad_suffix.glb")
+            self._write_test_glb(bad_suffix, [1, 6, 12], [1, 6, 12], slot_names=("hero", "weapon_1"))
+            self.assertNotEqual(
+                slot_contract.main(["validate", bad_suffix, "--expect", "hero,weapon"]),
+                0,
+            )
+
+            bad_drift = os.path.join(td, "bad_drift.glb")
+            self._write_test_glb(bad_drift, [1, 6, 12], [1, 7, 12])
+            self.assertNotEqual(
+                slot_contract.main(["validate", bad_drift, "--expect", "hero,weapon", "--cues", "1,6,12"]),
+                0,
+            )
 
 
 if __name__ == "__main__":

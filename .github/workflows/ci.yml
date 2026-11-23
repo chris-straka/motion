@@ -73,7 +73,9 @@ jobs:
           sudo apt-get install -y -qq libegl1 libgl1 libxkbcommon0 libxi6 \
             libxrender1 libxxf86vm1 libxfixes3 libsm6 libice6
       - name: Headless extension test
-        run: ~/blender/blender --background --factory-startup --python blender/tests/test_headless.py
+        run: ~/blender/blender --background --factory-startup --python-exit-code 1 --python blender/tests/test_headless.py
+      - name: Slotted actions headless test
+        run: ~/blender/blender --background --factory-startup --python-exit-code 1 --python blender/tests/test_slotted_actions.py
       - name: Batch retarget pipeline test
         env:
           MF_REQUIRE_BLENDER: "1"
