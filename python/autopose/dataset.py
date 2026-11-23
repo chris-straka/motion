@@ -27,8 +27,8 @@ def _vcross(a, b):
 
 
 def _vnorm(a):
-    l = math.sqrt(_vdot(a, a))
-    return (a[0] / l, a[1] / l, a[2] / l)
+    length = math.sqrt(_vdot(a, a))
+    return (a[0] / length, a[1] / length, a[2] / length)
 
 
 def _qmul(p, q):

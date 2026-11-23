@@ -71,8 +71,10 @@ def main():
     ap.add_argument("--group-lag", type=int, default=8)
     ap.add_argument("--min-conf", type=float, default=0.2)
     args = ap.parse_args()
-    cre = json.load(open(args.creature))
-    det = json.load(open(args.detections))
+    with open(args.creature) as f:
+        cre = json.load(f)
+    with open(args.detections) as f:
+        det = json.load(f)
     views = {v["name"]: v for v in cre["views"]}
     pair = [(i, views[n]) for i, n in enumerate(det["views"]) if n in views][:2]
     if len(pair) < 2:
@@ -131,7 +133,7 @@ def main():
     tg = tz = 0.0
     for gname, joints in groups.items():
         r0, _ = ratio(joints, 0)
-        best = min(range(-args.group_lag, args.group_lag + 1), key=lambda l: (ratio(joints, l)[0], abs(l)))
+        best = min(range(-args.group_lag, args.group_lag + 1), key=lambda lag: (ratio(joints, lag)[0], abs(lag)))
         rb, s = ratio(joints, best)
         tg += sum(x[0] for x in s)
         tz += sum(x[1] for x in s)

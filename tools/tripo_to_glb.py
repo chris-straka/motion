@@ -16,7 +16,6 @@ them) are filled; the report says how many it found, filled and left. The last
 line printed is `TRIPO_TO_GLB {json}`; the same JSON goes to `--report`.
 """
 import json
-import math
 import os
 import sys
 
@@ -314,7 +313,8 @@ def close_rims_in_file(path):
             continue
         size = max(max(v[k] for v in allp) - min(v[k] for v in allp) for k in range(3)) or 1.0
         q = size * 1e-5
-        key = lambda v: (round(v[0] / q), round(v[1] / q), round(v[2] / q))
+        def key(v, q=q):
+            return (round(v[0] / q), round(v[1] / q), round(v[2] / q))
         faces, where = [], {}
         for p in prims:
             ks = [key(v) for v in pos[id(p)]]

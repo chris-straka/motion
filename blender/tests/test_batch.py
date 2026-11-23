@@ -102,12 +102,12 @@ class TestBatch(unittest.TestCase):
             manifest = os.path.join(tmp, "manifest.json")
 
             build = subprocess.run(
-                [BLENDER, "--background", "--factory-startup", "--python", build_py],
+                [BLENDER, "--background", "--factory-startup", "--python-exit-code", "1", "--python", build_py],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=300)
             self.assertEqual(build.returncode, 0, "target blend build failed")
 
             batch = subprocess.run(
-                [BLENDER, "--background", "--factory-startup",
+                [BLENDER, "--background", "--factory-startup", "--python-exit-code", "1",
                  "--python", os.path.join(REPO, "blender", "tools", "batch_retarget.py"),
                  "--",
                  "--target-blend", target_blend, "--bvh-dir", bvh_dir,

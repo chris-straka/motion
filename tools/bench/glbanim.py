@@ -15,7 +15,8 @@ NC = {"SCALAR": 1, "VEC2": 2, "VEC3": 3, "VEC4": 4, "MAT4": 16}
 
 class Glb:
     def __init__(self, path):
-        b = open(path, "rb").read()
+        with open(path, "rb") as f:
+            b = f.read()
         jl = struct.unpack("<I", b[12:16])[0]
         self.j = json.loads(b[20:20 + jl])
         o = 20 + jl

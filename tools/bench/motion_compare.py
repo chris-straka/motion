@@ -50,7 +50,8 @@ def main():
             i += 1
             continue
         label, path = a.split("=", 1)
-        clips = {c["name"]: c for c in json.load(open(path))["clips"]}
+        with open(path) as fh:
+            clips = {c["name"]: c for c in json.load(fh)["clips"]}
         runs.append((label, clips))
         i += 1
     if len(runs) < 2:
@@ -73,7 +74,7 @@ def main():
         lines.append("|" + "---|" * len(head))
     else:
         lines.append(sep.join(f"{h:>14}" if k else f"{h:<38}" for k, h in enumerate(head)))
-    for key, label, get, lower in MEASURES:
+    for key, label, get, _lower in MEASURES:
         tot = []
         for _, clips in runs:
             vals = [get(c) for c in (find(clips, n) for n in names) if c is not None]
@@ -92,7 +93,7 @@ def main():
     # Per clip: which defects rose or fell against the first run.
     for n in names:
         changes = []
-        for key, label, get, lower in MEASURES:
+        for key, _label, get, lower in MEASURES:
             b = get(base[n])
             for lab, clips in runs[1:]:
                 c = find(clips, n)

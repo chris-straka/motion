@@ -61,7 +61,8 @@ def field(p):
 def surface_nets(cell):
     lo = (-0.35, -0.04, -1.05)
     n = (int(0.70 / cell) + 2, int(1.08 / cell) + 2, int(2.05 / cell) + 2)
-    at = lambda i, j, k: (lo[0] + i * cell, lo[1] + j * cell, lo[2] + k * cell)
+    def at(i, j, k):
+        return (lo[0] + i * cell, lo[1] + j * cell, lo[2] + k * cell)
     f = {}
     for i in range(n[0] + 1):
         for j in range(n[1] + 1):

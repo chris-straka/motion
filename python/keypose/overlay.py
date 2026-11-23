@@ -55,8 +55,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--width", type=int, default=1600)
     a = ap.parse_args()
-    rep = json.load(open(a.report))
-    lms = json.load(open(a.landmarks))
+    with open(a.report) as f:
+        rep = json.load(f)
+    with open(a.landmarks) as f:
+        lms = json.load(f)
     rows = []
     for view, path in (("front", a.front), ("side", a.side)):
         if not path or view not in lms["views"]:

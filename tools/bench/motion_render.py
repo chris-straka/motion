@@ -32,7 +32,8 @@ import sys
 import bpy
 from mathutils import Vector
 
-SPEC = json.load(open(sys.argv[sys.argv.index("--") + 1:][0]))
+with open(sys.argv[sys.argv.index("--") + 1:][0]) as _fh:
+    SPEC = json.load(_fh)
 W, H = SPEC.get("size", [480, 540])
 
 

@@ -615,16 +615,15 @@ def plant_overbudget(g):
                 at = p["attributes"]
                 data = {k: g.read(v) for k, v in at.items() if not k.startswith(("JOINTS_", "WEIGHTS_"))}
                 skin = "JOINTS_0" in at and "WEIGHTS_0" in at
-                if skin:
-                    J, W = g.read(at["JOINTS_0"]), g.read(at["WEIGHTS_0"])
+                J, W = (g.read(at["JOINTS_0"]), g.read(at["WEIGHTS_0"])) if skin else (None, None)
                 tris = g.triangles(p)
                 mid = {}
 
-                def midpoint(a, b):
+                def midpoint(a, b, mid=mid, data=data, skin=skin, J=J, W=W):
                     k = (min(a, b), max(a, b))
                     if k in mid:
                         return mid[k]
-                    for name, vals in data.items():
+                    for _name, vals in data.items():
                         vals.append(tuple((x + y) / 2.0 for x, y in zip(vals[a], vals[b])))
                     if skin:
                         j, w = _merge_skin((J[a], W[a]), (J[b], W[b]))
@@ -670,7 +669,8 @@ def plant(kind, src, dst):
 def selftest(work):
     """The committed clean fixture passes every check; each committed
     planted fixture fails, naming its check."""
-    exp = json.load(open(os.path.join(FIXTURES, "expected.json")))
+    with open(os.path.join(FIXTURES, "expected.json")) as f:
+        exp = json.load(f)
     ok, report = True, {}
     pinned = [(exp["clean"], exp["clean_sha256"])] + [(v["file"], v["sha256"]) for v in exp["planted"].values()]
     for name, want in pinned:
@@ -723,7 +723,8 @@ def main():
     if a.cmd == "selftest":
         ok, rep = selftest(work)
         if a.json:
-            json.dump(rep, open(a.json, "w"), indent=1)
+            with open(a.json, "w") as f:
+                json.dump(rep, f, indent=1)
         return 0 if ok else 1
     res = check(a.glb, work)
     if a.json:

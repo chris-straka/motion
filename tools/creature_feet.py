@@ -30,7 +30,8 @@ def main():
     ap.add_argument("--creature", required=True)
     ap.add_argument("clips", nargs="+")
     args = ap.parse_args()
-    cre = json.load(open(args.creature))
+    with open(args.creature) as f:
+        cre = json.load(f)
     fwd = cre["forward"]
     right = (fwd[1], -fwd[0], 0.0)  # forward x up
     for path in args.clips:

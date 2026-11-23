@@ -11,7 +11,6 @@ see still gets a guess (what we want for far legs) but a low score.
 Shared by train.py (fit) and detect.py (run on a video).
 """
 
-import math
 import random
 
 import torch

@@ -68,7 +68,8 @@ def parse_row(s):
 def marks_from(path):
     """{clip: {frame: tag}} from `motion check --json`."""
     out = {}
-    j = json.load(open(path))
+    with open(path) as f:
+        j = json.load(f)
     for c in j.get("clips", []):
         a = c.get("attack")
         m = {}
@@ -112,11 +113,12 @@ def main():
         p, sock = opts["prop"].rsplit("@", 1)
         spec["prop"] = os.path.abspath(p) + "@" + sock
     path = os.path.join(tmp, "spec.json")
-    json.dump(spec, open(path, "w"))
-    p = subprocess.run([blender(), "-b", "--factory-startup", "--python",
+    with open(path, "w") as fh:
+        json.dump(spec, fh)
+    p = subprocess.run([blender(), "-b", "--factory-startup", "--python-exit-code", "1", "--python",
                         os.path.join(HERE, "motion_video_render.py"), "--", path],
                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if "MOTION_VIDEO" not in p.stdout:
+    if p.returncode != 0 or "MOTION_VIDEO" not in p.stdout:
         sys.exit(p.stdout[-3000:] + p.stderr[-3000:])
     counts = json.loads(p.stdout.split("MOTION_VIDEO", 1)[1].strip().splitlines()[0])
     if out.endswith(".png"):

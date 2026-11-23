@@ -288,7 +288,8 @@ def compare(pro, tgt, stage):
     m["skate_cm"] = tgt["feet"]["skate_cm"]
     m["skate_pro_cm"] = pro["feet"]["skate_cm"]
     # Ground against the pro's.
-    sink = lambda d, f: d["lowest"][f] < -0.01
+    def sink(d, f):
+        return d["lowest"][f] < -0.01
     if retime:
         m["sink_new"] = tgt["feet"]["sink_frames"] - pro["feet"]["sink_frames"]
     else:
@@ -631,7 +632,8 @@ def stage_files(target, rig, lib, src, clips, stages, out):
     w = os.path.join(out, target, lib)
     os.makedirs(w, exist_ok=True)
     pick = ",".join(clips)
-    g = lambda s: os.path.join(w, f"{s}.glb")
+    def g(s):
+        return os.path.join(w, f"{s}.glb")
     with open(os.path.join(w, "log.txt"), "w") as log:
         if "raw" in stages:
             log.write(run([cli, "animate", "--input", rig, "--clips", src, "--output", g("raw"), "--pick", pick,
@@ -823,7 +825,7 @@ def _append_split_section(lines, label, stages, subset):
         rows = [c[s] for c in subset.values() if s in c]
         if not rows:
             continue
-        def mean(k, fmt):
+        def mean(k, fmt, rows=rows):
             xs = [r[k] for r in rows if r[k] is not None]
             return format(sum(xs) / len(xs), fmt) if xs else "-"
         lines.append(

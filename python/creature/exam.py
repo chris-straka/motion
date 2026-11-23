@@ -65,7 +65,7 @@ def exam_one(name, cdir, out, seed, frames, mf, blender, python, video, log):
     truth = os.path.join(out, "truth.json")
     run([mf, "creature-motion", "--creature", creature, "--output", truth, "--frames", str(frames), "--seed", str(seed)], log)
     film = os.path.join(out, "film")
-    run([blender, "--background", "--factory-startup", "--python", os.path.join(HERE, "render.py"), "--",
+    run([blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", os.path.join(HERE, "render.py"), "--",
          "--glb", glb, "--creature", creature, "--clip", truth, "--out", film, "--mode", "motion"], log)
     det = os.path.join(out, "detections.json")
     run([python, os.path.join(HERE, "detect.py"), "--model", model, "--creature", creature, "--frames", film, "--out", det], log)
@@ -82,7 +82,7 @@ def exam_one(name, cdir, out, seed, frames, mf, blender, python, video, log):
         scores["solve"] = json.load(f)
     if video:
         ours = os.path.join(out, "ours")
-        run([blender, "--background", "--factory-startup", "--python", os.path.join(HERE, "render.py"), "--",
+        run([blender, "--background", "--factory-startup", "--python-exit-code", "1", "--python", os.path.join(HERE, "render.py"), "--",
              "--glb", glb, "--creature", creature, "--clip", solved, "--out", ours, "--mode", "motion"], log)
         make_video(film, ours, os.path.join(out, f"{name}_seed{seed}_side_by_side.mp4"), creature, log)
     return scores

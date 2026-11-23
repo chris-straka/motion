@@ -6,14 +6,23 @@
 Follows the page's own "Download" flow (csrf token -> download page ->
 file URL). Used for the CC0 Quaternius Universal Animation Library.
 """
-import hashlib, http.cookiejar, json, re, sys, urllib.parse, urllib.request
+import hashlib
+import http.cookiejar
+import json
+import re
+import sys
+import urllib.parse
+import urllib.request
 
 page, want, out = sys.argv[1:4]
 sha = sys.argv[4] if len(sys.argv) > 4 else None
 cj = http.cookiejar.CookieJar()
 op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
 op.addheaders = [("User-Agent", "Mozilla/5.0 forge-bench")]
-get = lambda u, d=None: op.open(u, urllib.parse.urlencode(d).encode() if d else None, timeout=60).read()
+
+
+def get(u, d=None):
+    return op.open(u, urllib.parse.urlencode(d).encode() if d else None, timeout=60).read()
 html = get(page).decode()
 tok = re.search(r'name="csrf_token" value="([^"]+)"', html).group(1)
 dl = json.loads(get(page + "/download_url", {"csrf_token": tok}))["url"]
@@ -30,5 +39,6 @@ data = op.open(url, timeout=600).read()
 h = hashlib.sha256(data).hexdigest()
 if sha and h != sha:
     sys.exit(f"sha256 mismatch: {h}")
-open(out, "wb").write(data)
+with open(out, "wb") as f:
+    f.write(data)
 print(out, len(data), h)

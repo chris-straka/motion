@@ -21,10 +21,12 @@ def glb(name):
 
 class Fixtures(unittest.TestCase):
     def test_pinned(self):
-        exp = json.load(open(os.path.join(FX, "expected.json")))
+        with open(os.path.join(FX, "expected.json")) as fh:
+            exp = json.load(fh)
         files = [(exp["clean"], exp["clean_sha256"])] + [(v["file"], v["sha256"]) for v in exp["planted"].values()]
         for name, want in files:
-            self.assertEqual(hashlib.sha256(open(os.path.join(FX, name), "rb").read()).hexdigest(), want, name)
+            with open(os.path.join(FX, name), "rb") as fh:
+                self.assertEqual(hashlib.sha256(fh.read()).hexdigest(), want, name)
 
     def test_clean_measures(self):
         g = glb("clean.glb")

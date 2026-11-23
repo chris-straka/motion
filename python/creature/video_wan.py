@@ -160,9 +160,6 @@ def main():
         for phase in ("text", "sample"):
             subprocess.run([sys.executable, os.path.abspath(__file__)] + sys.argv[1:] + ["--phase", phase], check=True)
         return
-    from diffusers import AutoencoderKLWan, WanImageToVideoPipeline, WanTransformer3DModel
-    from diffusers.utils import export_to_video
-    from PIL import Image
     from transformers import AutoTokenizer
 
     t0 = time.time()

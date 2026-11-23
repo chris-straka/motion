@@ -46,7 +46,7 @@ def run_cli(binary, args, timeout=300):
             check=False,
         )
     except OSError as exc:
-        raise CliError(f"cannot run {binary}: {exc}")
+        raise CliError(f"cannot run {binary}: {exc}") from exc
     stdout = proc.stdout.decode("utf-8", "replace")
     stderr = proc.stderr.decode("utf-8", "replace")
     if proc.returncode != 0:
@@ -144,8 +144,8 @@ def parse_chain_factors(text):
             raise ValueError(f"chain factors need a bone substring, got '{chunk}'")
         try:
             value = float(factor)
-        except ValueError:
-            raise ValueError(f"chain factor must be a number, got '{chunk}'")
+        except ValueError as exc:
+            raise ValueError(f"chain factor must be a number, got '{chunk}'") from exc
         out.append((substr, value))
     return out
 

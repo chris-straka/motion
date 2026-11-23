@@ -392,7 +392,7 @@ class MOTIONFORGE_OT_stylize(bpy.types.Operator):
         try:
             chain_factors = cli.parse_chain_factors(params.stylize_chains)
         except ValueError as exc:
-            raise clip_io.MotionforgeError(str(exc))
+            raise clip_io.MotionforgeError(str(exc)) from exc
         stylize_params = {
             "exaggeration": params.stylize_exaggeration,
             "chain_factors": chain_factors,
@@ -423,7 +423,7 @@ def _physics_params(params):
     try:
         feet = cli.parse_feet(params.physics_feet)
     except ValueError as exc:
-        raise clip_io.MotionforgeError(str(exc))
+        raise clip_io.MotionforgeError(str(exc)) from exc
     return {
         "root": params.physics_root,
         "feet": feet,

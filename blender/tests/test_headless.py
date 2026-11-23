@@ -19,7 +19,6 @@ REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "blender"))
 
-import motionforge  # noqa: E402  (the extension package under test)
 from motionforge import cli, clip_io  # noqa: E402
 
 
@@ -425,7 +424,6 @@ def main():
         bpy.ops.object.mode_set(mode="OBJECT")
         clean_scene()
         bpy.ops.mesh.primitive_cube_add()
-        cube = bpy.context.view_layer.objects.active
         check_cancel("stylize with no armature", lambda: bpy.ops.motionforge.stylize())
         arm = make_armature("NoAction", CHAIN)
         bpy.context.view_layer.objects.active = arm
@@ -448,4 +446,4 @@ if __name__ == "__main__":
         raise
     except BaseException:
         traceback.print_exc()
-        raise SystemExit(1)
+        raise SystemExit(1) from None

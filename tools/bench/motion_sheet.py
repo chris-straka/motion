@@ -48,7 +48,8 @@ def parse_row(s):
 def clip_frames(glb, clip):
     """Frame count of a clip at 30 fps (from the GLB's JSON chunk)."""
     import struct
-    b = open(glb, "rb").read()
+    with open(glb, "rb") as f:
+        b = f.read()
     n = struct.unpack("<I", b[12:16])[0]
     j = json.loads(b[20:20 + n])
     for a in j.get("animations", []):
@@ -60,11 +61,12 @@ def clip_frames(glb, clip):
 
 def render(spec, tmp):
     path = os.path.join(tmp, "spec.json")
-    json.dump(spec, open(path, "w"))
-    p = subprocess.run([blender(), "-b", "--factory-startup", "--python",
+    with open(path, "w") as fh:
+        json.dump(spec, fh)
+    p = subprocess.run([blender(), "-b", "--factory-startup", "--python-exit-code", "1", "--python",
                         os.path.join(HERE, "motion_render.py"), "--", path],
                        capture_output=True, text=True, stdin=subprocess.DEVNULL)
-    if "MOTION_RENDER" not in p.stdout:
+    if p.returncode != 0 or "MOTION_RENDER" not in p.stdout:
         sys.exit(p.stdout[-3000:] + p.stderr[-3000:])
 
 

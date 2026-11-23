@@ -29,13 +29,16 @@ def blender():
 def main():
     out, clip, rows = sys.argv[1], sys.argv[2], [a.split("=", 1) for a in sys.argv[3:]]
     tmp = out + ".tiles"
-    p = subprocess.run([blender(), "-b", "--factory-startup", "--python", os.path.join(HERE, "filmstrip.py"), "--",
+    p = subprocess.run([blender(), "-b", "--factory-startup", "--python-exit-code", "1", "--python", os.path.join(HERE, "filmstrip.py"), "--",
                         tmp, clip] + [f"{k}={v}" for k, v in rows], capture_output=True, text=True)
-    if "FILMSTRIP" not in p.stdout:
+    if p.returncode != 0 or "FILMSTRIP" not in p.stdout:
         sys.exit(p.stdout[-2000:] + p.stderr[-2000:])
     strips = []
     for r in range(len(rows)):
-        tiles = [Image.open(f"{tmp}.{r}.{k}.png").convert("RGB") for k in range(8)]
+        tiles = []
+        for k in range(8):
+            with Image.open(f"{tmp}.{r}.{k}.png") as im:
+                tiles.append(im.convert("RGB"))
         o = tiles[0]
         for t in tiles[1:]:
             o = ImageChops.darker(o, t)

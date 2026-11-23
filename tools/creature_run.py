@@ -95,7 +95,7 @@ def repo_checks(name, path):
                 "python3 -m unittest discover -s blender/tests -p 'test_pure.py'",
                 "python3 -m unittest discover -s python/tests -p 'test_*.py'",
                 "python3 -m unittest discover -s tools/tests -p 'test_*.py'",
-                '"$BLENDER" --background --factory-startup --python blender/tests/test_headless.py',
+                '"$BLENDER" --background --factory-startup --python-exit-code 1 --python blender/tests/test_headless.py',
                 "python3 -m unittest blender.tests.test_batch"]
     if name == "skintokens":
         feat = " --no-default-features" if linux else ""
@@ -115,7 +115,8 @@ def gate_tests(cache, repos):
         dirty = sh(["git", "-C", path, "status", "--porcelain", "--untracked-files=no"])["out"].strip()
         key = os.path.join(cache, "tests", f"{name}-{tree}.json")
         if tree and not dirty and os.path.exists(key):
-            r = json.load(open(key))
+            with open(key) as f:
+                r = json.load(f)
             r["cached"] = True
         else:
             r = {"tree": tree, "commit": sh(["git", "-C", path, "rev-parse", "--short", "HEAD"])["out"].strip(),
@@ -129,7 +130,8 @@ def gate_tests(cache, repos):
                 r["pass"] = r["pass"] and s["exit"] == 0
             if tree and not dirty:
                 os.makedirs(os.path.dirname(key), exist_ok=True)
-                json.dump(r, open(key, "w"), indent=1)
+                with open(key, "w") as f:
+                    json.dump(r, f, indent=1)
         res["repos"][name] = r
         res["pass"] = res["pass"] and r["pass"]
     return res
@@ -148,7 +150,8 @@ def route(name, model, out):
     glb = os.path.join(out, name + ".glb")
     rep = {}
     try:
-        rep = json.load(open(os.path.join(out, "report.json")))
+        with open(os.path.join(out, "report.json")) as f:
+            rep = json.load(f)
     except (OSError, ValueError):
         pass
     res = {"cmd": cmd, "exit": r["exit"], "secs": r["secs"], "glb": glb if os.path.exists(glb) else None,
@@ -224,7 +227,7 @@ def gate_planted(glb, work):
 # ------------------------------------------------------------- gate 6
 
 def film(blender, glb, clip, prefix, crop=None, video=None, measure=False, frames=8):
-    cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(HERE, "creature_film.py"), "--",
+    cmd = [blender, "-b", "--factory-startup", "--python-exit-code", "1", "-P", os.path.join(HERE, "creature_film.py"), "--",
            "--glb", glb, "--clip", clip, "--out", prefix, "--frames", str(frames)]
     if crop:
         cmd += ["--crop", ",".join(str(c) for c in crop)]
@@ -344,8 +347,10 @@ def gate_judge(name, glb, work, blender):
         questions[str(i)] = {"image": f"item_{i:02d}.png",
                              "kind": "single" if it["category"] == "film" else "pair",
                              "clip": clip_words.get(what, f"the '{it['clip']}' clip")}
-    json.dump({"items": questions}, open(os.path.join(pack, "questions.json"), "w"), indent=1)
-    json.dump({"seed": JUDGE_SEED, "items": items}, open(keyp, "w"), indent=1)
+    with open(os.path.join(pack, "questions.json"), "w") as f:
+        json.dump({"items": questions}, f, indent=1)
+    with open(keyp, "w") as f:
+        json.dump({"seed": JUDGE_SEED, "items": items}, f, indent=1)
     # the judge: a fresh session that sees the pack only
     prompt = JUDGE_PROMPT.format(n=len(items))
     jr = sh(["claude", "-p", prompt, "--model", "opus", "--allowedTools", "Read",
@@ -374,7 +379,8 @@ def gate_judge(name, glb, work, blender):
     except (AttributeError, ValueError, KeyError, TypeError):
         res["why"] = "the judge gave no readable answer: " + tail(str(answer), 300)
         return res
-    json.dump(ans, open(os.path.join(work, "answers.json"), "w"), indent=1)
+    with open(os.path.join(work, "answers.json"), "w") as f:
+        json.dump(ans, f, indent=1)
     verdicts = []
     ok = not outside and jr["exit"] == 0
     kinds = ("torn_mesh", "limb_through_body", "sliding_foot", "limb_not_following")
@@ -415,7 +421,8 @@ def gate_game(name, glb, work):
     res = {"cmd": ["bash", "charkit/tools/line/creature_game.sh", name, glb, work], "exit": r["exit"],
            "secs": r["secs"], "pass": r["exit"] == 0}
     try:
-        res.update(json.load(open(os.path.join(work, "game.json"))))
+        with open(os.path.join(work, "game.json")) as f:
+            res.update(json.load(f))
     except (OSError, ValueError):
         res["pass"] = False
         res["why"] = "the game step wrote no game.json: " + tail(r["err"] or r["out"], 300)
@@ -507,7 +514,8 @@ def main():
         G["gates"]["6"] = {"pass": False, "why": "no rig to film"}
         G["gates"]["9"] = {"pass": False, "why": "no rig to put in the game"}
     try:
-        rows = [ln.split("\t") for ln in open(cardlog) if ln.strip()]
+        with open(cardlog) as f:
+            rows = [ln.split("\t") for ln in f if ln.strip()]
         G["card"] = {"jobs": len(rows), "seconds_on_card": sum(int(r[1]) for r in rows),
                      "seconds_waiting": sum(int(r[0]) for r in rows), "both_runs": True}
     except (OSError, ValueError, IndexError):

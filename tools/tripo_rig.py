@@ -194,7 +194,7 @@ def main():
     kind_arg = {"auto": "auto", "human": "biped", "creature": "auto"}[a.kind]
 
     def clean(tris):
-        cmd = [blender, "-b", "--factory-startup", "-P", os.path.join(repo, "tools/tripo_to_glb.py"), "--",
+        cmd = [blender, "-b", "--factory-startup", "--python-exit-code", "1", "-P", os.path.join(repo, "tools/tripo_to_glb.py"), "--",
                a.model, mesh, "--kind", kind_arg, "--convention", a.convention, "--tris", str(tris),
                "--height", str(a.height), "--texture", str(a.texture)]
         if a.klass == "monster":
@@ -375,7 +375,7 @@ def main():
                 # The same rig with fused legs cut apart (meshkit unfuse): a
                 # second try, so the cut is kept only when it ranks better.
                 cut = base + ".cut.std.glb"
-                r = run([blender, "-b", "--factory-startup", "--python", unfuse, "--", std, cut,
+                r = run([blender, "-b", "--factory-startup", "--python-exit-code", "1", "--python", unfuse, "--", std, cut,
                          "--report", base + ".unfuse.json"] + shlex.split(a.unfuse_args), timeout=900)
                 line = [ln for ln in r["out"].splitlines() if ln.startswith("UNFUSE ")]
                 info = json.loads(line[-1][len("UNFUSE "):]) if r["code"] == 0 and line else {}

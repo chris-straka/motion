@@ -59,7 +59,7 @@ class TripoToGlb(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, ignore_errors=True)
         src, out, rep = os.path.join(d, "figure.obj"), os.path.join(d, "figure.glb"), os.path.join(d, "r.json")
         figure_obj(src)
-        r = subprocess.run([blender(), "-b", "--factory-startup", "-P", os.path.join(TOOLS, "tripo_to_glb.py"), "--",
+        r = subprocess.run([blender(), "-b", "--factory-startup", "--python-exit-code", "1", "-P", os.path.join(TOOLS, "tripo_to_glb.py"), "--",
                             src, out, "--report", rep, *extra], capture_output=True, text=True, timeout=300)
         self.assertEqual(r.returncode, 0, r.stderr[-800:])
         self.assertTrue(os.path.getsize(out) > 1000)

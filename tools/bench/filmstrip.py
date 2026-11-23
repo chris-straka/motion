@@ -92,6 +92,6 @@ def render_row(r, path):
         bpy.ops.render.render(write_still=True)
 
 
-for r, (label, path) in enumerate(ROWS):
+for r, (_label, path) in enumerate(ROWS):
     render_row(r, path)
 print("FILMSTRIP", OUT)

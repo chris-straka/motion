@@ -14,7 +14,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 
 
 def which(name, explicit, fallbacks):

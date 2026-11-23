@@ -84,8 +84,8 @@ def forward(weights_doc, x):
     quats = []
     for i in range(0, len(x), 4):
         w, a, b, c = x[i : i + 4]
-        l = math.sqrt(w * w + a * a + b * b + c * c)
-        quats.append((1.0, 0.0, 0.0, 0.0) if l == 0.0 else (w / l, a / l, b / l, c / l))
+        qlen = math.sqrt(w * w + a * a + b * b + c * c)
+        quats.append((1.0, 0.0, 0.0, 0.0) if qlen == 0.0 else (w / qlen, a / qlen, b / qlen, c / qlen))
     return quats
 
 
@@ -125,7 +125,7 @@ def evaluate(weights_doc, skeleton, frames, effector_sets, foot_names=(), limits
                         input_tag_of(weights_doc))
         pred = forward(weights_doc, x)
         pred_heads = fk(skeleton, [(p[0], q) for p, q in zip(poses, pred)])
-        for i, (got, want) in enumerate(zip(pred_heads, heads)):
+        for got, want in zip(pred_heads, heads):
             pos_errs.append(math.dist(got, want))
         for i, (q, (_loc, want)) in enumerate(zip(pred, poses)):
             ang = quat_angle(q, want)

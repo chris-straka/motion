@@ -46,7 +46,8 @@ class StepFailures(unittest.TestCase):
         import tempfile
         d = tempfile.mkdtemp()
         p = os.path.join(d, "try_s1.glb")
-        open(p, "w").write("old")
+        with open(p, "w") as fh:
+            fh.write("old")
         tripo_rig.fresh(p)
         self.assertFalse(os.path.exists(p))
         tripo_rig.fresh(p)  # absent: no error

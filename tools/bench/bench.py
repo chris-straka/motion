@@ -225,7 +225,7 @@ def plot(path, title, rows, Lt):
     allx = np.concatenate([np.concatenate([r[1][:, 0], r[2][:, 0]]) for r in rows])
     lo, hi = allx.min(), allx.max()
     span = max(hi - lo, 1e-6)
-    for k, (label, A, B, plant_mask) in enumerate(rows):
+    for k, (label, A, B, _plant_mask) in enumerate(rows):
         y0 = 30 + k * H
         d.text((8, y0 + 4), label, fill=(230, 230, 230))
         for P, col in ((A, (90, 170, 255)), (B, (255, 150, 80))):
@@ -318,7 +318,10 @@ def main():
             if clip in SHEET_CLIPS:
                 sc = Lt / Ls
                 Y = yaw_matrix(facing(rest_s, cs), facing(rest_t, ct))
-                to_side = lambda P, c: np.stack([(P[:, c] @ facing(rest_t, ct)), P[:, c, 1]], 1)
+                dir_v = facing(rest_t, ct)
+
+                def to_side(P, c, dir_v=dir_v):
+                    return np.stack([(P[:, c] @ dir_v), P[:, c, 1]], 1)
                 Pss = Ps @ Y.T * sc
                 rows = [("source (scaled)", to_side(Pss, cs["DEF-foot.L"]), to_side(Pss, cs["DEF-foot.R"]), None),
                         ("by-name", to_side(Pn, cr["DEF-foot.L"]), to_side(Pn, cr["DEF-foot.R"]), None),
@@ -337,7 +340,8 @@ def main():
     os.makedirs(hist, exist_ok=True)
     shutil.copy(os.path.join(out, "summary.json"), os.path.join(hist, f"{a.tag}.json"))
     shutil.copy(os.path.join(out, "scorecard.md"), os.path.join(hist, f"{a.tag}.md"))
-    print(open(os.path.join(out, "scorecard.md")).read())
+    with open(os.path.join(out, "scorecard.md")) as fh:
+        print(fh.read())
 
 
 def write_scorecard(s, path):

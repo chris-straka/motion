@@ -153,7 +153,7 @@ def main(argv):
         train_quats = torch.tensor(
             [[list(q) for (_l, q) in p] for p in train], dtype=torch.float64)
         train_locs = torch.tensor(
-            [[list(l) for (l, _q) in p] for p in train], dtype=torch.float64)
+            [[list(loc) for (loc, _q) in p] for p in train], dtype=torch.float64)
         ground = train_heads[:, feet, 2].min().item() if feet else 0.0
 
     rng = random.Random(args.seed)
@@ -197,7 +197,7 @@ def main(argv):
             pos_errs, ang_errs, pen_count = [], [], 0
             limit_violations = []
             for hi, (p, t, true_p) in enumerate(zip(pred_q, true_q, heldout)):
-                ph = dataset.fk(skeleton, [(l, tuple(q)) for (l, _), q in zip(true_p, p)])
+                ph = dataset.fk(skeleton, [(loc, tuple(q)) for (loc, _), q in zip(true_p, p)])
                 th = dataset.fk(skeleton, true_p)
                 for a, c in zip(ph, th):
                     pos_errs.append(math.dist(a, c))

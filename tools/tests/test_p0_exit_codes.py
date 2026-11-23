@@ -7,9 +7,7 @@
 3. tools/tripo_rig.py:370 (`weights sheet`) must check the return code and fail
    loudly (exit 2) if `weights sheet` exits >= 2 or omits the output PNG.
 """
-import json
 import os
-import shutil
 import stat
 import subprocess
 import sys
@@ -138,7 +136,8 @@ if cmd == "sheet":
 sys.exit(0)
 """)
             model = os.path.join(d, "in.glb")
-            open(model, "wb").write(b"glTF")
+            with open(model, "wb") as fh:
+                fh.write(b"glTF")
             out_dir = os.path.join(d, "out")
             r = subprocess.run([
                 sys.executable, os.path.join(TOOLS, "tripo_rig.py"),

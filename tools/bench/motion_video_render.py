@@ -46,7 +46,8 @@ import sys
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
-SPEC = json.load(open(sys.argv[sys.argv.index("--") + 1:][0]))
+with open(sys.argv[sys.argv.index("--") + 1:][0]) as _fh:
+    SPEC = json.load(_fh)
 W, H = SPEC.get("size", [960, 540])
 
 # The game's camera, metres (see the module doc).
@@ -192,7 +193,8 @@ def load(row):
 def gltf_node_world(path, name):
     """A node's rest world matrix straight from the GLB (glTF axes)."""
     import struct
-    b = open(path, "rb").read()
+    with open(path, "rb") as f:
+        b = f.read()
     n = struct.unpack("<I", b[12:16])[0]
     j = json.loads(b[20:20 + n])
     nodes = j["nodes"]
@@ -221,7 +223,8 @@ def gltf_node_world(path, name):
 def gltf_parent_name(path, name):
     """The name of a node's parent in the GLB, or None."""
     import struct
-    b = open(path, "rb").read()
+    with open(path, "rb") as f:
+        b = f.read()
     n = struct.unpack("<I", b[12:16])[0]
     nodes = json.loads(b[20:20 + n])["nodes"]
     idx = next(i for i, nd in enumerate(nodes) if nd.get("name") == name)

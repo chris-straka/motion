@@ -54,8 +54,8 @@ def vcross(a, b):
 
 
 def vnorm(a):
-    l = math.sqrt(vdot(a, a))
-    return vscale(a, 1.0 / l)
+    length = math.sqrt(vdot(a, a))
+    return vscale(a, 1.0 / length)
 
 
 def qmul(p, q):
@@ -74,8 +74,8 @@ def qconj(q):
 
 
 def qnorm(q):
-    l = math.sqrt(sum(c * c for c in q))
-    return tuple(c / l for c in q)
+    length = math.sqrt(sum(c * c for c in q))
+    return tuple(c / length for c in q)
 
 
 def qaxis(axis, angle):
