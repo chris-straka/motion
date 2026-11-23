@@ -24,7 +24,7 @@ from bpy.props import (
     StringProperty,
 )
 
-from . import cli, clip_io
+from . import cli, clip_io, slot_contract, slotted
 
 # Must equal the module name Blender loaded us under (see retopoforge).
 ADDON_ID = __package__
@@ -679,6 +679,92 @@ class MOTIONFORGE_OT_export_godot(bpy.types.Operator):
         return bpy.ops.wm.rigforge_game_export("INVOKE_DEFAULT")
 
 
+def _active_slotted_context(op, context):
+    obj = context.view_layer.objects.active
+    if obj is None:
+        raise clip_io.MotionforgeError("make an animated object active first")
+    action = _active_action(obj)
+    expected = [s.strip() for s in op.expected_slots.split(",") if s.strip()] or None
+    cues = [float(s.strip()) for s in op.cue_frames.split(",") if s.strip()] or None
+    allowed = slotted.CANONICAL_SLOTS if op.canonical_only else None
+    bindings = slotted.collect_scene_action_bindings(action, context.scene)
+    return action, expected, cues, allowed, bindings
+
+
+class MOTIONFORGE_OT_validate_slotted(bpy.types.Operator):
+    bl_idname = "motionforge.validate_slotted"
+    bl_label = "Validate Slotted Action"
+    bl_description = "Verify canonical slot names and zero-desync timings on the active action"
+    bl_options = {"REGISTER"}
+
+    expected_slots: StringProperty(name="Expected Slots", default="")
+    cue_frames: StringProperty(name="Cue Frames", default="")
+    canonical_only: BoolProperty(name="Canonical Only", default=False)
+    require_shared_keys: BoolProperty(name="Require Shared Keys", default=True)
+
+    def execute(self, context):
+        try:
+            action, expected, cues, allowed, bindings = _active_slotted_context(self, context)
+            info = slotted.validate_slotted_action(
+                action,
+                expected_slots=expected,
+                bindings=bindings if bindings else None,
+                allowed_slots=allowed,
+                cue_frames=cues,
+                require_shared_key_times=self.require_shared_keys,
+            )
+            lo, hi = info["frame_range"]
+            msg = (
+                f"Slotted action '{info['action']}' OK: "
+                f"slots={','.join(info['slots'])} ({lo:g}..{hi:g})"
+            )
+            _store_report(context, msg)
+            self.report({"INFO"}, msg)
+            return {"FINISHED"}
+        except (clip_io.MotionforgeError, slot_contract.SlotContractError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+
+
+class MOTIONFORGE_OT_export_slotted_glb(bpy.types.Operator):
+    bl_idname = "motionforge.export_slotted_glb"
+    bl_label = "Export Slotted GLB"
+    bl_description = "Validate and export the active slotted hero+prop Action to GLB"
+    bl_options = {"REGISTER"}
+
+    filepath: StringProperty(name="File Path", default="", subtype="FILE_PATH")
+    expected_slots: StringProperty(name="Expected Slots", default="")
+    cue_frames: StringProperty(name="Cue Frames", default="")
+    canonical_only: BoolProperty(name="Canonical Only", default=False)
+    require_shared_keys: BoolProperty(name="Require Shared Keys", default=True)
+
+    def execute(self, context):
+        try:
+            if not self.filepath:
+                raise clip_io.MotionforgeError("specify an output GLB filepath")
+            action, expected, cues, allowed, bindings = _active_slotted_context(self, context)
+            if not bindings:
+                raise clip_io.MotionforgeError(
+                    f"no scene objects bound to slots on '{action.name}'"
+                )
+            info = slotted.export_slotted_glb(
+                bpy.path.abspath(self.filepath),
+                action,
+                bindings,
+                expected_slots=expected,
+                allowed_slots=allowed,
+                cue_frames=cues,
+                require_shared_key_times=self.require_shared_keys,
+            )
+            msg = f"Exported slotted GLB ({','.join(info['slots'])})"
+            _store_report(context, msg)
+            self.report({"INFO"}, msg)
+            return {"FINISHED"}
+        except (clip_io.MotionforgeError, slot_contract.SlotContractError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+
+
 class MOTIONFORGE_PT_panel(bpy.types.Panel):
     bl_label = "MotionForge"
     bl_idname = "MOTIONFORGE_PT_panel"
@@ -755,6 +841,10 @@ class MOTIONFORGE_PT_panel(bpy.types.Panel):
         box.prop(params, "creature_pin")
         box.operator("motionforge.creature_solve", icon="PLAY")
 
+        box = layout.box()
+        box.label(text="Slotted Actions", icon="ACTION")
+        box.operator("motionforge.validate_slotted", icon="CHECKMARK")
+
         report = params.last_report.strip()
         if report:
             box = layout.box()
@@ -774,6 +864,8 @@ _CLASSES = (
     MOTIONFORGE_OT_autopose,
     MOTIONFORGE_OT_creature_solve,
     MOTIONFORGE_OT_export_godot,
+    MOTIONFORGE_OT_validate_slotted,
+    MOTIONFORGE_OT_export_slotted_glb,
     MOTIONFORGE_PT_panel,
 )
 
