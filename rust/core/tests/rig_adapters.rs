@@ -802,9 +802,9 @@ fn standardize_preserves_single_finger_chain_and_places_palm_sockets() {
             .collect();
         world_sockets.push([pair[0], pair[1]]);
     }
-    for s in 0..2 {
-        assert!(world_sockets[0][s].0.approx_eq(world_sockets[1][s].0, 1e-6));
-        assert!(world_sockets[0][s].1.approx_eq(world_sockets[1][s].1, 1e-6));
+    for (p0, p1) in world_sockets[0].iter().zip(&world_sockets[1]) {
+        assert!(p0.0.approx_eq(p1.0, 1e-6));
+        assert!(p0.1.approx_eq(p1.1, 1e-6));
     }
 }
 

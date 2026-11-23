@@ -201,7 +201,7 @@ pub fn read(c: &Creature) -> Body {
     let back_dir = (c.forward.scale(-1.0) + up.scale(-0.3)).normalized();
     let mut back: Vec<usize> = Vec::new();
     let mut best = f64::NEG_INFINITY;
-    for &from in front.iter().take(((front.len() + 2) / 3).max(1)) {
+    for &from in front.iter().take(front.len().div_ceil(3).max(1)) {
         let base = c.skeleton.bones[from].head.dot(back_dir);
         let all = children(c, from);
         let least = all.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
@@ -1253,6 +1253,7 @@ mod tests {
         let tracks: Vec<Vec<Vec3>> = feet.iter().map(|&f| foot_world_track(&c, &s, f)).collect();
 
         // Double support: never both feet airborne on the same frame.
+        #[allow(clippy::needless_range_loop)]
         for f in 0..n {
             let any_down = feet.iter().enumerate().any(|(i, &foot)| {
                 let rest_z = c.skeleton.bones[foot].tail.z;

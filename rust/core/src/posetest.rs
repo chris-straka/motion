@@ -313,6 +313,8 @@ pub fn build(
     Ok((out, report))
 }
 
+pub type ClipSample = (String, Vec<Option<Trs>>);
+
 /// Sample frames of animations already on `animated` (same node layout
 /// as the character) at `fractions` of each clip, root travel removed
 /// horizontally so tiles stay centered.
@@ -320,7 +322,7 @@ pub fn clip_samples(
     animated: &Document,
     max_clips: usize,
     fractions: &[f64],
-) -> Result<Vec<(String, Vec<Option<Trs>>)>, String> {
+) -> Result<Vec<ClipSample>, String> {
     let rig = Rig::from_doc(animated)?;
     let helper_drivers = crate::helpers::Drivers::for_rig(&rig);
     let map = humanoid::map_rig(&rig);

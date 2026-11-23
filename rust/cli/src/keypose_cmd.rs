@@ -293,11 +293,12 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
         (frames, trep)
     };
     let mut tried: Vec<(f64, Option<f64>)> = Vec::new();
-    let mut best: Option<(
+    type BestTiming = (
         f64,
         Vec<Vec<Option<Trs>>>,
         motion_core::keypose::timing::TimingReport,
-    )> = None;
+    );
+    let mut best: Option<BestTiming> = None;
     let stage = if carries.len() > 1 {
         let subject =
             motion_core::motioncheck::Subject::new(&doc, &motion_core::contact::Options::default())

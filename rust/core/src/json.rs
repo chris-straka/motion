@@ -294,29 +294,26 @@ impl<'a> Parser<'a> {
                             code = code * 16 + d;
                         }
                         // Surrogate pair.
-                        if (0xD800..0xDC00).contains(&code) {
-                            if self.peek() == Some(b'\\') {
+                        if (0xD800..0xDC00).contains(&code) && self.peek() == Some(b'\\') {
+                            self.bump();
+                            if self.peek() == Some(b'u') {
                                 self.bump();
-                                if self.peek() == Some(b'u') {
-                                    self.bump();
-                                    let mut lo: u32 = 0;
-                                    for _ in 0..4 {
-                                        let h = self
-                                            .bump()
-                                            .ok_or_else(|| self.err("bad \\u escape"))?;
-                                        let d = (h as char)
-                                            .to_digit(16)
-                                            .ok_or_else(|| self.err("bad \\u escape"))?;
-                                        lo = lo * 16 + d;
-                                    }
-                                    if (0xDC00..0xE000).contains(&lo) {
-                                        code = 0x10000 + ((code - 0xD800) << 10) + (lo - 0xDC00);
-                                    } else {
-                                        return Err(self.err("bad surrogate pair"));
-                                    }
+                                let mut lo: u32 = 0;
+                                for _ in 0..4 {
+                                    let h =
+                                        self.bump().ok_or_else(|| self.err("bad \\u escape"))?;
+                                    let d = (h as char)
+                                        .to_digit(16)
+                                        .ok_or_else(|| self.err("bad \\u escape"))?;
+                                    lo = lo * 16 + d;
+                                }
+                                if (0xDC00..0xE000).contains(&lo) {
+                                    code = 0x10000 + ((code - 0xD800) << 10) + (lo - 0xDC00);
                                 } else {
                                     return Err(self.err("bad surrogate pair"));
                                 }
+                            } else {
+                                return Err(self.err("bad surrogate pair"));
                             }
                         }
                         out.push(char::from_u32(code).ok_or_else(|| self.err("bad codepoint"))?);

@@ -262,12 +262,11 @@ fn loc_at(track: &Track, b: usize, t: f64) -> Vec3 {
     track.loc[f0][b].lerp(track.loc[f1][b], u)
 }
 
+pub type BodyTrackResult = (Vec<Vec<Quat>>, Vec<Vec<Vec3>>, BodyReport);
+
 /// Stylize a whole-body track. Returns new rotations and translations
 /// (same frame count) and what was done.
-pub fn stylize_body(
-    track: &Track,
-    params: &BodyParams,
-) -> Result<(Vec<Vec<Quat>>, Vec<Vec<Vec3>>, BodyReport), String> {
+pub fn stylize_body(track: &Track, params: &BodyParams) -> Result<BodyTrackResult, String> {
     params.base.validate()?;
     if !(0.0..=1.0).contains(&params.key_prominence) {
         return Err("key-prominence must be in 0..=1".into());
@@ -455,7 +454,7 @@ pub fn stylize_body(
         let edge = g.min(n - 1 - g) as f64 / ramp as f64;
         let w_ex = smoothstep(edge);
         let mut fr = Vec::with_capacity(nb);
-        for b in 0..nb {
+        for (b, &neut_b) in neutral.iter().enumerate().take(nb) {
             let delta = |(k0, k1): (usize, usize)| track.rot[k0][b].conj().mul(track.rot[k1][b]);
             let mut q = rot_at(track, b, src);
             if st.anti > 0.0 {
@@ -466,8 +465,8 @@ pub fn stylize_body(
             }
             let f = 1.0 + (track.factor[b] - 1.0) * w_ex * exag_scale;
             if (f - 1.0).abs() > 1e-12 {
-                let rel = neutral[b].conj().mul(q);
-                q = neutral[b].mul(Quat::IDENTITY.slerp(rel, f));
+                let rel = neut_b.conj().mul(q);
+                q = neut_b.mul(Quat::IDENTITY.slerp(rel, f));
             }
             fr.push(q.normalized());
         }
@@ -1064,11 +1063,8 @@ mod tests {
         let (rot, _, rep) = stylize_body(&t, &p).unwrap();
         // Both bones are frozen over the first 2 frames after each key.
         for &k in &rep.keys[..rep.keys.len() - 1] {
-            for b in 0..2 {
-                assert!(
-                    rot[k][b].angle_to(rot[k + 1][b]) < 1e-12,
-                    "key {k} bone {b}"
-                );
+            for (b, (rk, rk1)) in rot[k].iter().zip(&rot[k + 1]).take(2).enumerate() {
+                assert!(rk.angle_to(*rk1) < 1e-12, "key {k} bone {b}");
             }
         }
     }

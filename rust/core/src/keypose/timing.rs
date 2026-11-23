@@ -357,8 +357,8 @@ pub fn build(
         // The locked feet define this key's marks from now on.
         let mut l = keys[i].locals.clone();
         crate::keypose::fit::move_root(info, &mut l, o);
-        for s in 0..2 {
-            if let FootPlan::Lock(p, r) = plan[s] {
+        for (s, plan_s) in plan.iter().enumerate() {
+            if let FootPlan::Lock(p, r) = *plan_s {
                 set_world_rot(rig, &mut l, info.foot[s], r);
                 let _ = p;
             }
@@ -426,11 +426,17 @@ pub fn build(
             continue;
         }
         let mut l = keys[i].locals.clone();
-        for n in 0..n_nodes {
-            if let (Some(a), Some(b)) = (keys[i].locals[n], keys[i + 1].locals[n]) {
+        for ((a_opt, b_opt), slot) in keys[i]
+            .locals
+            .iter()
+            .zip(&keys[i + 1].locals)
+            .zip(&mut l)
+            .take(n_nodes)
+        {
+            if let (Some(a), Some(b)) = (*a_opt, *b_opt) {
                 let mut t = a;
                 t.r = b.r.slerp(a.r, 1.0 + amount);
-                l[n] = Some(t);
+                *slot = Some(t);
             }
         }
         exit[i] = l;

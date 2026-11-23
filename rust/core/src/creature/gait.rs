@@ -675,7 +675,8 @@ pub fn rom_ron(c: &Creature, parts: &Parts) -> String {
             poses.push((format!("{tag}_paw"), vec![(paw, bend("Forward", 30.0))]));
         }
     }
-    let chains: [(&str, &[usize], [(&str, &str, f64); 4]); 3] = [
+    type GaitChain<'a> = (&'a str, &'a [usize], [(&'a str, &'a str, f64); 4]);
+    let chains: [GaitChain<'_>; 3] = [
         (
             "spine",
             &parts.spine,

@@ -291,7 +291,7 @@ fn build_humanoid_with_width(width_scale: f64) -> Document {
     for i in &indices {
         ibytes.extend_from_slice(&i.to_le_bytes());
     }
-    while doc.bin.len() % 4 != 0 {
+    while !doc.bin.len().is_multiple_of(4) {
         doc.bin.push(0);
     }
     let off = doc.bin.len();

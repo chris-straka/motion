@@ -55,6 +55,7 @@ fn peak_elbow_axial_twist_deg(info: &RigInfo, spec_json: &str) -> f64 {
 }
 
 #[test]
+#[allow(clippy::assertions_on_constants)]
 fn forearm_roll_cap_is_at_most_80_deg_and_twistless_attacks_respect_it() {
     assert!(
         FOREARM_ROLL_DEG <= 80.0 + 1e-9,

@@ -274,6 +274,7 @@ impl Mask {
 
     /// Fill a triangle and record each covered pixel's interpolated
     /// depth in `depth` (nearest wins; `depth` starts at infinity).
+    #[allow(clippy::too_many_arguments)]
     pub fn fill_tri_depth(
         &mut self,
         a: (f64, f64),
@@ -320,6 +321,7 @@ impl Mask {
     }
 
     /// Fill a thick segment with depth: `za` at `a`, `zb` at `b`.
+    #[allow(clippy::too_many_arguments)]
     pub fn fill_segment_depth(
         &mut self,
         a: (f64, f64),
@@ -1426,8 +1428,9 @@ impl Stage {
             out.key_frame = load;
         }
         out.body_frame = windup;
-        for f in windup..=settle {
-            let d = 1.0 - shots[f].body.iou(&ns.body);
+        for (off, shot) in shots[windup..=settle].iter().enumerate() {
+            let f = windup + off;
+            let d = 1.0 - shot.body.iou(&ns.body);
             if d > out.body_change {
                 out.body_change = d;
                 out.body_frame = f;

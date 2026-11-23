@@ -144,9 +144,9 @@ impl Mat3 {
 
     pub fn mul_mat(self, o: Mat3) -> Mat3 {
         let mut rows = [[0.0; 3]; 3];
-        for i in 0..3 {
-            for j in 0..3 {
-                rows[i][j] = self.rows[i][0] * o.rows[0][j]
+        for (i, row_out) in rows.iter_mut().enumerate() {
+            for (j, cell) in row_out.iter_mut().enumerate() {
+                *cell = self.rows[i][0] * o.rows[0][j]
                     + self.rows[i][1] * o.rows[1][j]
                     + self.rows[i][2] * o.rows[2][j];
             }
@@ -220,10 +220,12 @@ impl Quat {
         Quat::new(self.w, -self.x, -self.y, -self.z)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn neg(self) -> Quat {
         Quat::new(-self.w, -self.x, -self.y, -self.z)
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn mul(self, o: Quat) -> Quat {
         Quat::new(
             self.w * o.w - self.x * o.x - self.y * o.y - self.z * o.z,

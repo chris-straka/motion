@@ -522,8 +522,8 @@ fn apply_hierarchy(
             }
         }
     }
-    for c in 0..n {
-        if let Some(p) = new_parent[c] {
+    for (c, &np) in new_parent.iter().enumerate().take(n) {
+        if let Some(p) = np {
             if rig.parent[c] != Some(p) {
                 children[p].push(c);
             }

@@ -338,7 +338,7 @@ pub fn clothing(
         hi = hi.max(v.p.y);
     }
     let cell = (hi - lo).max(1e-6) / 10.0;
-    for g in 0..n {
+    for (g, out_g) in out.iter_mut().enumerate() {
         let gt: Vec<[usize; 3]> = tris
             .iter()
             .copied()
@@ -365,7 +365,7 @@ pub fn clothing(
                 }
             }
             if inside * 2 > all {
-                out[g] = true;
+                *out_g = true;
             }
         }
     }
@@ -2372,6 +2372,9 @@ pub fn dump_posed(body: &Body, rig: &Rig, frames: &[Vec<Option<Trs>>], weapon: b
     )
 }
 
+type SourceFrames<'a> = (&'a Body, &'a Rig, &'a [Vec<Option<Trs>>]);
+type ArmMeshMeasure = (Vec<bool>, f64, usize, Vec<f64>);
+
 /// Measure exact (mesh) contact over a clip for one arm on the initial frames
 /// and compute per-frame source-body mesh slack (0.0 when target deepened the
 /// penetration beyond the source body's own fault).
@@ -2381,8 +2384,8 @@ fn mesh_measure_initial(
     rig: &Rig,
     frames: &[Vec<Option<Trs>>],
     weapon: bool,
-    source: Option<(&Body, &Rig, &[Vec<Option<Trs>>])>,
-) -> (Vec<bool>, f64, usize, Vec<f64>) {
+    source: Option<SourceFrames<'_>>,
+) -> ArmMeshMeasure {
     let arm = &body.arms[ai];
     let w = if weapon { arm.weapon.as_ref() } else { None };
     let mut at = 0;
@@ -2993,7 +2996,7 @@ pub fn fix_clip_with_source(
     times: &[f64],
     clip: &str,
     opts: &Options,
-    source: Option<(&Body, &Rig, &[Vec<Option<Trs>>])>,
+    source: Option<SourceFrames<'_>>,
 ) -> ClipContact {
     let weapon = opts.weapon_in(clip);
     let margin = opts.margin * body.height;

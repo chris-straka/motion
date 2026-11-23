@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn nan_safe_sorting_does_not_panic() {
-        let mut vals = vec![1.0, f64::NAN, -2.5, 0.0, f64::INFINITY, f64::NEG_INFINITY];
+        let mut vals = [1.0, f64::NAN, -2.5, 0.0, f64::INFINITY, f64::NEG_INFINITY];
         vals.sort_by(f64::total_cmp);
         assert_eq!(vals[0], f64::NEG_INFINITY);
         assert_eq!(vals[1], -2.5);

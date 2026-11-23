@@ -105,9 +105,9 @@ pub fn exam_motion(c: &Creature, frames: usize, fps: f64, seed: u64, amplitude: 
         phase: f64,
     }
     let mut bones: Vec<[Osc; 2]> = Vec::with_capacity(n);
-    for i in 0..n {
-        let limit = c.max_deg[i].to_radians() * amplitude;
-        let scale = if leg[i] { 0.45 } else { 1.0 };
+    for (&is_leg, &deg) in leg.iter().zip(&c.max_deg).take(n) {
+        let limit = deg.to_radians() * amplitude;
+        let scale = if is_leg { 0.45 } else { 1.0 };
         let split = rng.range(0.5, 0.85);
         let mk = |rng: &mut Rng, share: f64| Osc {
             axis: rng.unit_vec(),

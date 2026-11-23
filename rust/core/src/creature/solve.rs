@@ -125,6 +125,8 @@ fn median(v: &mut [f64]) -> f64 {
     }
 }
 
+type TriangulatedPoints = (Vec<Vec<Point>>, f64, f64, usize);
+
 /// Triangulate every (frame, joint) from the first two views found in
 /// both the detections and the creature. Returns points[frame][bone]
 /// and the consistency numbers.
@@ -132,7 +134,7 @@ fn triangulate_all(
     c: &Creature,
     d: &Detections,
     params: &SolveParams,
-) -> Result<(Vec<Vec<Point>>, f64, f64, usize), String> {
+) -> Result<TriangulatedPoints, String> {
     let mut view_idx: Vec<(usize, &View)> = Vec::new();
     for (vi, name) in d.views.iter().enumerate() {
         if let Some(v) = c.view(name) {
@@ -277,7 +279,7 @@ fn smooth_points(points: &mut [Vec<Point>], sigma: f64) {
         // Smooth.
         let radius = (3.0 * sigma).ceil() as i64;
         let orig: Vec<Point> = (0..frames).map(|f| points[f][j]).collect();
-        for f in 0..frames {
+        for (f, row) in points.iter_mut().enumerate() {
             let mut acc = Vec3::ZERO;
             let mut wsum = 0.0;
             for k in -radius..=radius {
@@ -291,7 +293,7 @@ fn smooth_points(points: &mut [Vec<Point>], sigma: f64) {
                 wsum += w;
             }
             if wsum > 0.0 {
-                points[f][j].p = acc.scale(1.0 / wsum);
+                row[j].p = acc.scale(1.0 / wsum);
             }
         }
     }
@@ -299,6 +301,7 @@ fn smooth_points(points: &mut [Vec<Point>], sigma: f64) {
 
 /// Largest-eigenvalue eigenvector of a symmetric 4x4 (cyclic Jacobi),
 /// signed to agree with `prefer`.
+#[allow(clippy::needless_range_loop)]
 fn top_eigenvector(mut a: [[f64; 4]; 4], prefer: [f64; 4]) -> [f64; 4] {
     let mut v = [[0.0; 4]; 4];
     for (i, row) in v.iter_mut().enumerate() {
@@ -660,7 +663,7 @@ fn pin_feet(c: &Creature, frames: &mut [Frame], fps: f64, report: &mut SolveRepo
             let anchor = anchor.scale(1.0 / (e - s) as f64);
             let lo = (s as f64 - ramp_frames).floor().max(0.0) as usize;
             let hi = ((e as f64 + ramp_frames).ceil() as usize).min(frames.len());
-            for f in lo..hi {
+            for (f, frame) in frames.iter_mut().enumerate().take(hi).skip(lo) {
                 let strength = if f < s {
                     smoothstep(1.0 - (s - f) as f64 / ramp_frames)
                 } else if f >= e {
@@ -671,9 +674,9 @@ fn pin_feet(c: &Creature, frames: &mut [Frame], fps: f64, report: &mut SolveRepo
                 if strength <= 0.0 {
                     continue;
                 }
-                let before = tail_world(sk, &fk(sk, &frames[f]), foot);
-                ccd_foot(c, &mut frames[f], foot, &chain, anchor, strength);
-                let after = tail_world(sk, &fk(sk, &frames[f]), foot);
+                let before = tail_world(sk, &fk(sk, frame), foot);
+                ccd_foot(c, frame, foot, &chain, anchor, strength);
+                let after = tail_world(sk, &fk(sk, frame), foot);
                 let shift = (after - before).length() * 1000.0;
                 if shift > report.max_pin_shift_mm {
                     report.max_pin_shift_mm = shift;

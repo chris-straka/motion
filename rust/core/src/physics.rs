@@ -418,6 +418,7 @@ fn fit_parabola(t: &[f64], z: &[f64]) -> Option<(f64, f64, f64)> {
         m.swap(col, pivot);
         for row in col + 1..3 {
             let f = m[row][col] / m[col][col];
+            #[allow(clippy::needless_range_loop)]
             for k in col..4 {
                 m[row][k] -= f * m[col][k];
             }
@@ -538,9 +539,7 @@ pub fn physics_fix(clip: &Clip, params: &PhysicsParams) -> Result<(Clip, Physics
         for flag in accel_flags.iter().chain(turn_flags.iter()) {
             let lo = flag.saturating_sub(params.smooth_pad);
             let hi = (*flag + params.smooth_pad).min(mask.len() - 1);
-            for k in lo..=hi {
-                mask[k] = true;
-            }
+            mask[lo..=hi].fill(true);
         }
         if mask.iter().any(|m| *m) {
             let xs: Vec<f64> = tracks.root.iter().map(|p| p.x).collect();
@@ -710,8 +709,8 @@ fn balance_fix_pass(
     }
     let to_local = root_world.transpose();
     let mut touched = 0usize;
-    for f in 0..clip.frames.len() {
-        let Some((center, radius, spread, d_max)) = pinned[f] else {
+    for (f, pin_f) in pinned.iter().enumerate().take(clip.frames.len()) {
+        let Some((center, radius, spread, d_max)) = *pin_f else {
             continue;
         };
         let pivot = Vec3::new(center.x, center.y, ground);
@@ -834,12 +833,19 @@ fn physics_check(
     fixed_ballistic: usize,
     fixed_momentum_frames: usize,
 ) -> Result<PhysicsReport, String> {
-    let root_idx = clip.skeleton.index(&params.root).unwrap();
+    let root_idx = clip
+        .skeleton
+        .index(&params.root)
+        .ok_or_else(|| format!("physics check: root bone '{}' not found", params.root))?;
     let feet_idx: Vec<usize> = params
         .feet
         .iter()
-        .map(|n| clip.skeleton.index(n).unwrap())
-        .collect();
+        .map(|n| {
+            clip.skeleton
+                .index(n)
+                .ok_or_else(|| format!("physics check: foot bone '{n}' not found"))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     let tracks = build_tracks(clip, root_idx, &feet_idx);
     let weights = com_weights(clip);
     let ground = tracks
@@ -1138,7 +1144,10 @@ mod tests {
             doc.get("format").unwrap().as_str().unwrap(),
             "motionforge-frame-physics"
         );
-        assert_eq!(doc.get("balanced").unwrap().as_bool().unwrap(), true);
+        assert!(doc
+            .get("balanced")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false));
     }
 
     fn leaning_clip(frames: usize, head_x: f64) -> Clip {
@@ -1431,5 +1440,16 @@ mod tests {
         let (_, report) = physics_fix(&clip, &p).unwrap();
         assert!(report.turn_flags.contains(&3));
         assert!(report.max_turn_deg > 80.0);
+    }
+
+    #[test]
+    fn physics_fix_rejects_missing_root_or_foot_without_panicking() {
+        let clip = still_clip(2, 0.0);
+        let mut p = params();
+        p.root = "missing_root".into();
+        assert!(physics_fix(&clip, &p).is_err());
+        p.root = params().root;
+        p.feet = vec!["missing_foot".into()];
+        assert!(physics_fix(&clip, &p).is_err());
     }
 }

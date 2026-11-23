@@ -726,7 +726,7 @@ mod tests {
             .sum::<f64>()
             / curled.len() as f64;
         assert!(
-            mean_deg >= 31.5 && mean_deg < 36.0,
+            (31.5..36.0).contains(&mean_deg),
             "distal mitten mean curl should be in 31.5..36 deg, got {mean_deg}"
         );
     }

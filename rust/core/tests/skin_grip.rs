@@ -402,7 +402,7 @@ fn synthetic_hand_humanoid(with_fingers: bool) -> Document {
     for i in &indices {
         ibytes.extend_from_slice(&i.to_le_bytes());
     }
-    while doc.bin.len() % 4 != 0 {
+    while !doc.bin.len().is_multiple_of(4) {
         doc.bin.push(0);
     }
     let off = doc.bin.len();
@@ -478,8 +478,10 @@ fn synthetic_hand_humanoid(with_fingers: bool) -> Document {
 
 fn score_socket_clip(doc: &Document) -> motion_core::readcam::ReadCam {
     let subj = Subject::new(doc, &Options::default()).unwrap();
-    let mut cam_opts = CamOptions::default();
-    cam_opts.blade_pose = BladePose::Socket;
+    let cam_opts = CamOptions {
+        blade_pose: BladePose::Socket,
+        ..Default::default()
+    };
     let stage = Stage::new(doc, &subj, &cam_opts).unwrap();
     let anim = &Animation::load_all(doc).unwrap()[0];
     let (times, frames) = sample(&subj.rig, anim, None);
@@ -489,8 +491,8 @@ fn score_socket_clip(doc: &Document) -> motion_core::readcam::ReadCam {
 
 #[test]
 fn skin_grip_pure_scoring_and_constants() {
-    assert!(SKIN_PALM_GOOD_M > 0.02 && SKIN_PALM_GOOD_M < SKIN_PALM_BAD_M);
-    assert!(SKIN_WRAP_BAD > 0.15 && SKIN_WRAP_BAD < SKIN_WRAP_GOOD && SKIN_WRAP_GOOD <= 1.0);
+    const { assert!(SKIN_PALM_GOOD_M > 0.02 && SKIN_PALM_GOOD_M < SKIN_PALM_BAD_M) };
+    const { assert!(SKIN_WRAP_BAD > 0.15 && SKIN_WRAP_BAD < SKIN_WRAP_GOOD && SKIN_WRAP_GOOD <= 1.0) };
     // Full wrap, close to palm skin, closed fingers -> 1.0.
     assert!((skin_grip_of(0.02, 0.95, Some(40.0)) - 1.0).abs() < 1e-12);
     // Close to palm and wrapped, but fingers never curled -> fails.

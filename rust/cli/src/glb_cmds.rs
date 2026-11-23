@@ -127,8 +127,10 @@ fn contact_opts(cmd: &Cmd) -> Result<Option<ContactOptions>, (i32, String)> {
     if cmd.flag("no-contact") {
         return Ok(None);
     }
-    let mut o = ContactOptions::default();
-    o.refit_width = !cmd.flag("no-refit-width");
+    let mut o = ContactOptions {
+        refit_width: !cmd.flag("no-refit-width"),
+        ..Default::default()
+    };
     if let Some(w) = cmd.get("weapon") {
         o.weapon_side = match w {
             "R" | "r" => Some("R".into()),
@@ -374,7 +376,9 @@ pub fn cmd_grip(cmd: &Cmd) -> CmdResult {
             d.x, d.y, d.z, f, clear
         ));
     }
-    let worst = ranked.last().unwrap();
+    let Some(worst) = ranked.last() else {
+        return Err((1, "no candidates scored".into()));
+    };
     r.push_str(&format!(
         "worst ({:.3}, {:.3}, {:.3}): hits {}\n",
         worst.0.x, worst.0.y, worst.0.z, worst.1
@@ -442,7 +446,7 @@ pub fn cmd_pose_test(cmd: &Cmd) -> CmdResult {
 fn pose_samples(
     doc: &Document,
     cmd: &Cmd,
-) -> Result<Vec<(String, Vec<Option<motion_core::rig::Trs>>)>, (i32, String)> {
+) -> Result<Vec<motion_core::posetest::ClipSample>, (i32, String)> {
     let sources = clip_sources(cmd)?;
     if sources.is_empty() {
         return Ok(Vec::new());

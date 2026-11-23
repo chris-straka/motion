@@ -24,6 +24,15 @@
 //! is preserved.
 //! ====================================================
 
+#![allow(
+    clippy::excessive_precision,
+    clippy::approx_constant,
+    clippy::eq_op,
+    clippy::needless_range_loop,
+    clippy::for_kv_map,
+    clippy::explicit_counter_loop
+)]
+
 // ---------------------------------------------------------------- sin/cos
 
 const S1: f64 = -1.66666666666666324348e-01; // 0xBFC55555, 0x55555549

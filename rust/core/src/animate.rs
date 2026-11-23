@@ -88,11 +88,10 @@ impl Mapped {
     pub fn new(doc: &Document) -> Result<Mapped, String> {
         let rig = Rig::from_doc(doc)?;
         let map = humanoid::map_rig(&rig);
-        if map.node_of("DEF-spine").is_none() {
+        let Some(hips) = map.node_of("DEF-spine") else {
             return Err("no hips bone found".into());
-        }
+        };
         let forward = forward(&rig, &map);
-        let hips = map.node_of("DEF-spine").unwrap();
         let ground = ["DEF-foot.L", "DEF-foot.R", "DEF-toe.L", "DEF-toe.R"]
             .iter()
             .filter_map(|n| map.node_of(n))

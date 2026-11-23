@@ -68,8 +68,7 @@ pub fn plants(ankle: &[Vec3], times: &[f64], leg_len: f64) -> Vec<(usize, usize)
         .collect();
     let mut out = Vec::new();
     let mut start = None;
-    for f in 0..=n {
-        let x = f < n && on[f];
+    for (f, &x) in on.iter().chain(std::iter::once(&false)).enumerate() {
         match (x, start) {
             (true, None) => start = Some(f),
             (false, Some(s)) => {

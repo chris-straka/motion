@@ -376,7 +376,7 @@ fn build_doc(
         ibytes.extend_from_slice(&i.to_le_bytes());
     }
     // Index buffer view + accessor.
-    while doc.bin.len() % 4 != 0 {
+    while !doc.bin.len().is_multiple_of(4) {
         doc.bin.push(0);
     }
     let off = doc.bin.len();

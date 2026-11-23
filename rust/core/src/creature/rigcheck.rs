@@ -201,7 +201,7 @@ pub fn read_mesh(doc: &Document, rig: &Rig) -> Result<Mesh, String> {
                     .collect(),
                 None => (0..pos.len()).collect(),
             };
-            for t in idx.chunks_exact(3) {
+            for t in idx.as_chunks::<3>().0 {
                 if t.iter().all(|&i| i < pos.len()) {
                     tris.push([base + t[0], base + t[1], base + t[2]]);
                 }
@@ -332,7 +332,7 @@ impl Mesh {
     /// Inside test by majority of three axis rays (robust to edge hits).
     pub fn contains(&self, p: Vec3) -> bool {
         let dirs = [
-            Vec3::new(0.7071067811865476, 0.3, 0.6435),
+            Vec3::new(std::f64::consts::FRAC_1_SQRT_2, 0.3, 0.6435),
             Vec3::new(-0.21, 0.9, -0.38),
             Vec3::new(0.33, -0.57, 0.75),
         ];
@@ -401,14 +401,14 @@ pub fn ground_blobs(mesh: &Mesh, band: f64, cell: f64, min_verts: usize) -> Vec<
         }
     }
     let mut groups: Vec<(usize, Vec3, usize)> = Vec::new(); // (root, sum, count)
-    for i in 0..n {
+    for (i, &low_i) in low.iter().enumerate() {
         let r = find(&mut parent, i);
         match groups.iter_mut().find(|g| g.0 == r) {
             Some(g) => {
-                g.1 = g.1 + low[i];
+                g.1 = g.1 + low_i;
                 g.2 += 1;
             }
-            None => groups.push((r, low[i], 1)),
+            None => groups.push((r, low_i, 1)),
         }
     }
     let mut out: Vec<(usize, Vec3)> = groups

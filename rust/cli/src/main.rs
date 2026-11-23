@@ -674,7 +674,8 @@ fn cmd_autopose(cmd: &Cmd) -> Result<String, (i32, String)> {
             .iter()
             .map(|b| b.name.clone())
             .collect();
-        let rep = check_limits(&limits, &bones, &[quats.clone()]).map_err(|e| (3, e))?;
+        let rep =
+            check_limits(&limits, &bones, std::slice::from_ref(&quats)).map_err(|e| (3, e))?;
         r.push_str(&format!(
             "limits: {} violations, {} unmatched\n",
             rep.violations.len(),
@@ -706,15 +707,14 @@ fn cmd_clip_info(cmd: &Cmd) -> Result<String, (i32, String)> {
         clip.fps,
         clip.frames.len() as f64 / clip.fps
     ));
-    for bone in &clip.skeleton.bones {
+    for (bi, bone) in clip.skeleton.bones.iter().enumerate() {
         r.push_str(&format!(
             "  {} (parent: {}, len {:.4} m)\n",
             bone.name,
             bone.parent
                 .map(|p| clip.skeleton.bones[p].name.as_str())
                 .unwrap_or("-"),
-            clip.skeleton
-                .bone_length(clip.skeleton.index(&bone.name).unwrap())
+            clip.skeleton.bone_length(bi)
         ));
     }
     if let Some(path) = cmd.get("emit-skeleton") {

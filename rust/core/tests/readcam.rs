@@ -375,8 +375,10 @@ fn authored_sweep_on_mitten_humanoid_passes_grip_and_open_hand_fails() {
     let (closed_doc, _) = build(&base_doc, &spec, None).unwrap();
     let closed_doc = Document::parse(&closed_doc.to_bytes().unwrap()).unwrap();
     let subj = Subject::new(&closed_doc, &Options::default()).unwrap();
-    let mut cam_opts = CamOptions::default();
-    cam_opts.blade_pose = BladePose::Socket;
+    let cam_opts = CamOptions {
+        blade_pose: BladePose::Socket,
+        ..Default::default()
+    };
     let stage = Stage::new(&closed_doc, &subj, &cam_opts).unwrap();
     let anim = &Animation::load_all(&closed_doc).unwrap()[0];
     let (times, frames) = sample(&subj.rig, anim, None);
@@ -462,8 +464,10 @@ fn distal_mitten_places_socket_in_palm_pocket_and_rejects_fingertip_socket() {
         "wrist_to_sock={wrist_to_sock}, f1_to_sock={f1_to_sock}"
     );
 
-    let mut cam_opts = CamOptions::default();
-    cam_opts.blade_pose = BladePose::Socket;
+    let cam_opts = CamOptions {
+        blade_pose: BladePose::Socket,
+        ..Default::default()
+    };
     let subj = Subject::new(&palm_doc, &Options::default()).unwrap();
     let stage = Stage::new(&palm_doc, &subj, &cam_opts).unwrap();
     let anim = &Animation::load_all(&palm_doc).unwrap()[0];

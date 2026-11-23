@@ -229,7 +229,7 @@ fn measure_slide(skeleton: &Skeleton, clip: &Clip, feet: &[usize]) -> Vec<FootSt
         let pts: Vec<Vec3> = clip
             .frames
             .iter()
-            .map(|f| fk(&skeleton, f)[idx].head)
+            .map(|f| fk(skeleton, f)[idx].head)
             .collect();
         let (mask, speeds) = stance_mask(&pts, clip.fps);
         let st: Vec<f64> = speeds
@@ -502,11 +502,11 @@ pub fn retarget(
                 if j > i {
                     let drift = Vec3::new(pts[j].x - pts[i].x, pts[j].y - pts[i].y, 0.0);
                     pin_drift += drift.length();
-                    for k in i..=j {
+                    for (k, frame) in out.frames.iter_mut().enumerate().take(j + 1).skip(i) {
                         let world = drift.scale((k - i) as f64 / (j - i) as f64);
                         for (ri, t) in plan.chain_roots.iter().enumerate() {
                             let corr = to_local[ri].mul_vec(world);
-                            let loc = &mut out.frames[k].poses[*t].loc;
+                            let loc = &mut frame.poses[*t].loc;
                             *loc = *loc - corr;
                         }
                     }

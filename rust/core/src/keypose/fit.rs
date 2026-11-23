@@ -741,8 +741,7 @@ pub fn fit_key(
         (lm::WR_L, lm::IX_L, lm::PK_L),
         (lm::WR_R, lm::IX_R, lm::PK_R),
     ];
-    for s in 0..2 {
-        let (w_, ix, pk) = knuckles[s];
+    for (s, &(w_, ix, pk)) in knuckles.iter().enumerate() {
         if Some(s) == params.sword_hand && pose.blade.is_some() && info.socket[s].is_some() {
             continue;
         }
@@ -1254,7 +1253,8 @@ pub fn grip_off_hand(
     // sword socket's frame), turned about the grip by whichever quarter
     // turn the wrist reaches best.
     let start = locals.to_vec();
-    let mut best: Option<(f64, Vec<Option<Trs>>, Vec<(String, f64)>, f64)> = None;
+    type BestGripFit = (f64, Vec<Option<Trs>>, Vec<(String, f64)>, f64);
+    let mut best: Option<BestGripFit> = None;
     for quarter in 0..4 {
         let mut l = start.clone();
         let mut cap_here = Vec::new();

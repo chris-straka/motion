@@ -313,13 +313,13 @@ pub fn infer(weights: &Weights, input: &EffectorInput) -> Result<Vec<Quat>, Stri
     let last = weights.layers.len() - 1;
     for (li, layer) in weights.layers.iter().enumerate() {
         let mut y = vec![0.0; layer.rows];
-        for r in 0..layer.rows {
+        for (r, y_r) in y.iter_mut().enumerate().take(layer.rows) {
             let mut acc = layer.bias[r];
             let base = r * layer.cols;
-            for c in 0..layer.cols {
-                acc += layer.weights[base + c] * x[c];
+            for (c, x_c) in x.iter().enumerate().take(layer.cols) {
+                acc += layer.weights[base + c] * x_c;
             }
-            y[r] = if li == last { acc } else { acc.max(0.0) };
+            *y_r = if li == last { acc } else { acc.max(0.0) };
         }
         x = y;
     }

@@ -785,8 +785,8 @@ pub fn score(
         if n >= 4 {
             let p: Vec<Vec<Vec3>> = (0..n).map(track).collect();
             for f in 1..n - 2 {
-                for j in 0..p[f].len() {
-                    let v = p[f + 2][j] - p[f + 1][j].scale(3.0) + p[f][j].scale(3.0) - p[f - 1][j];
+                for (j, pf_j) in p[f].iter().enumerate() {
+                    let v = p[f + 2][j] - p[f + 1][j].scale(3.0) + pf_j.scale(3.0) - p[f - 1][j];
                     let mag = v.length() / (dt * dt * dt) / k;
                     sum += mag;
                     count += 1;
@@ -909,6 +909,7 @@ pub fn score(
                 limits.joints.push(what);
             }
         };
+        #[allow(clippy::needless_range_loop)]
         for f in 0..n {
             for h in &subject.hinges {
                 let u = pos(f, h.b) - pos(f, h.a);
@@ -1391,7 +1392,7 @@ pub fn check_doc_with(
     subject.skip_through = skip_through;
     let mut out = Vec::new();
     for anim in Animation::load_all(doc)? {
-        if !only.is_empty() && !only.iter().any(|o| *o == anim.name) {
+        if !only.is_empty() && !only.contains(&anim.name) {
             continue;
         }
         let (times, frames) = sample(&subject.rig, &anim, fps);

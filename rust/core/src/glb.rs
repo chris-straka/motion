@@ -88,7 +88,7 @@ impl Document {
     pub fn to_bytes(&self) -> Result<Vec<u8>, String> {
         let mut doc = self.json.clone();
         let mut bin = self.bin.clone();
-        while bin.len() % 4 != 0 {
+        while !bin.len().is_multiple_of(4) {
             bin.push(0);
         }
         if !bin.is_empty() {
@@ -98,7 +98,7 @@ impl Document {
             doc.remove("buffers");
         }
         let mut text = json::emit(&doc)?.into_bytes();
-        while text.len() % 4 != 0 {
+        while !text.len().is_multiple_of(4) {
             text.push(b' ');
         }
         let mut out = Vec::with_capacity(28 + text.len() + bin.len());
@@ -392,6 +392,12 @@ impl Document {
             _ => return Err(format!("unsupported componentType {}", comp)),
         };
         let Some(view_index) = acc.get("bufferView").and_then(Json::as_usize) else {
+            if count.checked_mul(width).is_none_or(|n| n > 1_000_000) {
+                return Err(format!(
+                    "accessor {} zero-filled count {} exceeds limit",
+                    index, count
+                ));
+            }
             return Ok(vec![vec![0.0; width]; count]);
         };
         let view = self
@@ -415,8 +421,15 @@ impl Document {
             .checked_add(acc_off)
             .ok_or("accessor offset overflow")?;
         if count > 0 {
-            let need = acc_off + stride * (count - 1) + packed;
-            if need > view_len || view_off + view_len > self.bin.len() {
+            let need = stride
+                .checked_mul(count - 1)
+                .and_then(|s| acc_off.checked_add(s))
+                .and_then(|s| s.checked_add(packed))
+                .ok_or_else(|| format!("accessor {} size overflow", index))?;
+            let view_end = view_off
+                .checked_add(view_len)
+                .ok_or_else(|| format!("accessor {} view overflow", index))?;
+            if need > view_len || view_end > self.bin.len() {
                 return Err(format!("accessor {} exceeds its buffer", index));
             }
         }
@@ -474,7 +487,7 @@ impl Document {
     }
 
     fn push_view(&mut self, bytes: &[u8], target: Option<u64>) -> usize {
-        while self.bin.len() % 4 != 0 {
+        while !self.bin.len().is_multiple_of(4) {
             self.bin.push(0);
         }
         let offset = self.bin.len();
@@ -496,7 +509,8 @@ impl Document {
     /// for animation inputs and positions.
     pub fn push_float_accessor(&mut self, rows: &[Vec<f64>], kind: &str, min_max: bool) -> usize {
         let width = rows.first().map(|r| r.len()).unwrap_or(1);
-        let mut bytes = Vec::with_capacity(rows.len() * width * 4);
+        let cap = rows.len().saturating_mul(width).saturating_mul(4);
+        let mut bytes = Vec::with_capacity(cap);
         for row in rows {
             for v in row {
                 bytes.extend_from_slice(&(*v as f32).to_le_bytes());
@@ -891,5 +905,22 @@ mod tests {
         assert!((s.x - 0.01).abs() < 1e-12);
         let m = Affine::from_gltf_matrix(&a.to_gltf_matrix());
         assert!(m.apply(p).approx_eq(a.apply(p), 1e-12));
+    }
+
+    #[test]
+    fn read_accessor_rejects_huge_zero_filled_count_and_stride_overflow() {
+        let mut doc = two_accessor_doc();
+        // Zero-filled accessor (no bufferView) with huge count must return Err, not OOM.
+        doc.array_mut("accessors").push(Json::obj(vec![
+            ("componentType", Json::num(FLOAT as f64)),
+            ("count", Json::num(2_000_000.0)),
+            ("type", Json::str("MAT4")),
+        ]));
+        assert!(doc.read_accessor(2).is_err());
+
+        // Stride multiplication overflow in release must not wrap past bounds check.
+        doc.array_mut("bufferViews")[0].set("byteStride", Json::num(9_223_372_036_854_775_808.0));
+        doc.array_mut("accessors")[0].set("count", Json::num(3.0));
+        assert!(doc.read_accessor(0).is_err());
     }
 }

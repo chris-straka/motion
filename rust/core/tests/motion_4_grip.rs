@@ -323,7 +323,7 @@ fn synthetic_cupped_distal_mitten() -> Document {
     for i in &indices {
         ibytes.extend_from_slice(&i.to_le_bytes());
     }
-    while doc.bin.len() % 4 != 0 {
+    while !doc.bin.len().is_multiple_of(4) {
         doc.bin.push(0);
     }
     let off = doc.bin.len();
@@ -400,8 +400,10 @@ fn synthetic_cupped_distal_mitten() -> Document {
 #[test]
 fn distal_mitten_cupped_hand_reaches_0_9_on_all_four_presets() {
     let base = synthetic_cupped_distal_mitten();
-    let mut cam_opts = CamOptions::default();
-    cam_opts.blade_pose = BladePose::Socket;
+    let cam_opts = CamOptions {
+        blade_pose: BladePose::Socket,
+        ..Default::default()
+    };
     for name in PRESETS {
         let spec = parse_spec(preset(name).unwrap()).unwrap();
         let (built, rep) = build(&base, &spec, None).unwrap();

@@ -564,7 +564,7 @@ impl<'a> Solver<'a> {
         let unit = h / 2.0; // the game's hero is 2 m
         let q = Quat::new(HELD_ROT[3], HELD_ROT[0], HELD_ROT[1], HELD_ROT[2]).normalized();
         let mut hold = [None; 2];
-        for s in 0..2 {
+        for (s, hold_slot) in hold.iter_mut().enumerate() {
             let Some(socket) = info.socket[s] else {
                 continue;
             };
@@ -572,7 +572,7 @@ impl<'a> Solver<'a> {
             let sw = rig.rest_world[socket];
             let inv = hw.rotation().conj();
             let grip_w = sw.apply(Vec3::new(HELD_GRIP[0], HELD_GRIP[1], HELD_GRIP[2]).scale(unit));
-            hold[s] = Some(Hold {
+            *hold_slot = Some(Hold {
                 blade: inv
                     .rotate_vec(sw.apply_linear(q.rotate_vec(UP)))
                     .normalized(),
@@ -1104,11 +1104,10 @@ impl Report {
     }
 }
 
+pub type AttackTrajectory = (Vec<f64>, Vec<Vec<Option<Trs>>>, Report);
+
 /// Solve every frame of `spec` on the rig.
-pub fn solve(
-    info: &RigInfo,
-    spec: &Spec,
-) -> Result<(Vec<f64>, Vec<Vec<Option<Trs>>>, Report), String> {
+pub fn solve(info: &RigInfo, spec: &Spec) -> Result<AttackTrajectory, String> {
     let solver = Solver::new(info, spec)?;
     let (params, at) = spec.frames();
     let mut frames = Vec::with_capacity(params.len());

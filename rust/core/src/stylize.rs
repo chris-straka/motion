@@ -206,7 +206,7 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
     let mut key_pose: Vec<Vec<Option<Pose>>> = vec![vec![None; n]; nb];
     for b in 0..nb {
         let factor = params.factor_for(&clip.skeleton.bones[b].name);
-        for f in 0..n {
+        for (f, key_slot) in key_pose[b].iter_mut().enumerate().take(n) {
             let pose = &clip.frames[f].poses[b];
             let q = if extremes[b].contains(&f) {
                 Quat::IDENTITY.slerp(pose.quat, factor)
@@ -216,7 +216,7 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
             // Endpoints and extremes are keys (poses fixed here);
             // anticipation counters are added below.
             if f == 0 || f == n - 1 || extremes[b].contains(&f) {
-                key_pose[b][f] = Some(Pose {
+                *key_slot = Some(Pose {
                     loc: pose.loc,
                     quat: q,
                 });
@@ -254,6 +254,7 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
     // Resample each bone's rotation over its keys; location is the
     // source's, frame for frame.
     let mut out_frames = Vec::with_capacity(n);
+    #[allow(clippy::needless_range_loop)]
     for f in 0..n {
         let mut poses = Vec::with_capacity(nb);
         for b in 0..nb {
@@ -280,9 +281,7 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
             let p1 = key_pose[b][k1].clone().unwrap();
             let span = (k1 - k0) as f64;
             let held = params.hold.min(k1 - k0) as f64;
-            let e = if (f - k0) as f64 <= held {
-                0.0
-            } else if span - held <= 0.0 {
+            let e = if (f - k0) as f64 <= held || span - held <= 0.0 {
                 0.0
             } else {
                 let u = ((f - k0) as f64 - held) / (span - held);
@@ -297,8 +296,8 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
     }
 
     let mut union = Vec::new();
-    for b in 0..nb {
-        let keys: Vec<usize> = (0..n).filter(|f| key_pose[b][*f].is_some()).collect();
+    for (b, kp_b) in key_pose.iter().enumerate().take(nb) {
+        let keys: Vec<usize> = (0..n).filter(|f| kp_b[*f].is_some()).collect();
         if keys.len() > 2 {
             report
                 .busy_bones

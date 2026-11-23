@@ -26,14 +26,7 @@ fn rot(info: &RigInfo, l: &[Option<Trs>], n: usize) -> Quat {
 }
 
 /// Bend `lower` about its limb's anatomical hinge by `deg`.
-fn bend(
-    info: &RigInfo,
-    l: &mut Vec<Option<Trs>>,
-    upper: usize,
-    lower: usize,
-    end: usize,
-    deg: f64,
-) {
+fn bend(info: &RigInfo, l: &mut [Option<Trs>], upper: usize, lower: usize, end: usize, deg: f64) {
     let rig = &info.rig;
     let axis_rest = hinge_axis(rig, upper, lower, end).unwrap();
     let a_local = rig.rest_world[upper]
@@ -50,7 +43,7 @@ fn bend(
     );
 }
 
-fn aim(info: &RigInfo, l: &mut Vec<Option<Trs>>, bone: usize, child: usize, dir: Vec3) {
+fn aim(info: &RigInfo, l: &mut [Option<Trs>], bone: usize, child: usize, dir: Vec3) {
     let w = info.rig.world(l);
     let cur = (w[child].t - w[bone].t).normalized();
     let q = shortest_arc(cur, dir.normalized()).mul(w[bone].rotation());
@@ -80,10 +73,8 @@ fn known_pose(info: &RigInfo) -> Vec<Option<Trs>> {
         set_world_rot(rig, &mut l, b, q.mul(rig.rest_world[b].rotation()));
     }
     let qc = lean.mul(qh);
-    for s in 0..2 {
-        if let Some(sh) = info.shoulder[s] {
-            set_world_rot(rig, &mut l, sh, qc.mul(rig.rest_world[sh].rotation()));
-        }
+    for &sh in info.shoulder.iter().flatten() {
+        set_world_rot(rig, &mut l, sh, qc.mul(rig.rest_world[sh].rotation()));
     }
     let turn = Quat::from_axis_angle(UP, 20f64.to_radians());
     if let Some(neck) = info.neck {
@@ -177,9 +168,9 @@ fn markers(info: &RigInfo, l: &[Option<Trs>]) -> Vec<Vec3> {
         head,
         hp + f.scale(0.1) + UP.scale(0.05 - 0.1 * 20f64.to_radians().tan()),
     );
-    for i in 1..=6 {
+    for (i, slot) in m.iter_mut().enumerate().take(7).skip(1) {
         let side = if i <= 3 { 1.0 } else { -1.0 };
-        m[i] = at(
+        *slot = at(
             head,
             hp + f.scale(0.08) + UP.scale(0.06) + lf.scale(0.03 * side),
         );

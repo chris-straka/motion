@@ -157,7 +157,7 @@ fn get<'a>(obj: &'a Json, key: &str, ctx: &str) -> Result<&'a Json, String> {
 
 fn as_version(v: &Json, ctx: &str) -> Result<i64, String> {
     match v.as_f64() {
-        Some(f) if f.fract() == 0.0 && f >= 1.0 && f <= 9.0 => Ok(f as i64),
+        Some(f) if f.fract() == 0.0 && (1.0..=9.0).contains(&f) => Ok(f as i64),
         _ => Err(format!("{}: version must be a small integer", ctx)),
     }
 }
@@ -483,7 +483,12 @@ mod tests {
         // at (99.5, 0, 1.5). Agreement proves the Rust FK convention
         // (M = P @ R @ B, zero-roll rests) reproduces Blender exactly.
         let sk = two_bone_skeleton();
-        let q = Quat::new(0.7071067811865476, 0.0, 0.0, 0.7071067811865476);
+        let q = Quat::new(
+            std::f64::consts::FRAC_1_SQRT_2,
+            0.0,
+            0.0,
+            std::f64::consts::FRAC_1_SQRT_2,
+        );
         let frame = Frame {
             poses: vec![
                 Pose {

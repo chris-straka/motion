@@ -1230,8 +1230,10 @@ mod tests {
 
     #[test]
     fn validates_negative_params() {
-        let mut opts = GiantOptions::default();
-        opts.anticipation = -0.1;
+        let mut opts = GiantOptions {
+            anticipation: -0.1,
+            ..Default::default()
+        };
         assert!(opts.validate().is_err());
 
         opts = GiantOptions::default();
