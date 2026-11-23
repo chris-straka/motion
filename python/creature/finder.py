@@ -3,7 +3,7 @@
 A DINOv2 ViT-S/14 backbone (facebook/dinov2-small, Apache-2.0) fine-tuned
 per creature to light up one heatmap per joint. Input: one camera view
 resized to 448x448 (32x32 patches). Head: a small conv decoder from the
-patch tokens to J heatmaps at 112x112 (4x the patch grid). Each joint's
+patch tokens to J heatmaps at 128x128 (4x the patch grid). Each joint's
 position is the soft-argmax of its heatmap; its confidence is the
 heatmap's peak after a softmax over the map, so a joint the model cannot
 see still gets a guess (what we want for far legs) but a low score.

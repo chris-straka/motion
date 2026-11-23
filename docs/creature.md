@@ -338,3 +338,15 @@ fov_y_deg, width, height`; pixel origin top-left of each view).
   hides, not timing.
 - The exam films through Blender, the same renderer the finder trained
   on; real video shifts the domain (the degradation is the hedge).
+
+## Canonical 2-cam DINOv2 module & `autorig` link
+
+- `python/creature/` (`finder.py`, `detect.py`, `exam.py`, `render.py`,
+  `train.py`, `video_wan.py`) together with `rust/core/src/creature/` is the
+  single canonical home for the CanItCode 2-camera DINOv2 tracker and
+  triangulation solver. Downstream benchmarks (including
+  `skintokens/tools/bench/exam.sh`) invoke `python/creature/exam.py` directly.
+- Skeleton generation and CanItCode outside-body / digit-fold pruning are
+  consolidated behind `skintokens/bin/autorig`; `tools/creature_rig.py` and
+  `tools/tripo_rig.py` delegate there rather than duplicating multi-seed
+  loops.
