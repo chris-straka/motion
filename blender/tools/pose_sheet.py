@@ -76,12 +76,30 @@ def actions_in_file_order(arm):
     return sorted(acts, key=lambda a: a.name)
 
 
+def _pick_armature_slot(arm, act):
+    slots = list(getattr(act, "slots", None) or ())
+    if not slots:
+        return None
+    for layer in getattr(act, "layers", None) or ():
+        for strip in getattr(layer, "strips", None) or ():
+            for cb in getattr(strip, "channelbags", None) or ():
+                if getattr(cb, "slot", None) is not None and any(
+                    getattr(fc, "data_path", "").startswith("pose.bones")
+                    for fc in getattr(cb, "fcurves", None) or ()
+                ):
+                    return cb.slot
+    for s in slots:
+        if getattr(s, "name_display", "") in (arm.name, arm.data.name if arm.data else "", "hero"):
+            return s
+    return slots[0]
+
+
 def set_action(arm, act):
     ad = arm.animation_data or arm.animation_data_create()
     ad.action = act
-    slots = getattr(act, "slots", None)
-    if slots is not None and len(slots) and hasattr(ad, "action_slot"):
-        ad.action_slot = slots[0]
+    slot = _pick_armature_slot(arm, act)
+    if slot is not None and hasattr(ad, "action_slot"):
+        ad.action_slot = slot
     start = int(act.frame_range[0])
     bpy.context.scene.frame_set(start)
     bpy.context.view_layer.update()
