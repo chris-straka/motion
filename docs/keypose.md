@@ -111,7 +111,7 @@ drawn front and side as exact landmarks, fused and fitted back:
 
 Two views carry a bad depth guess; one view leans on it.
 
-The HLH drawn sheets for the two diagonal two-handed cuts (three figures
+Reference drawn sheets for the two diagonal two-handed cuts (three figures
 each, front and side, 2026-11-13). The fit's joints drawn back into the
 pictures, mean distance from MediaPipe's landmarks as a share of the
 figure's height (report `overlay.mean_err_share`; the pictures:
@@ -130,11 +130,11 @@ the right foot forward, its strike with the left forward). Fitted blades
 are within 1.3 degrees of the drawn blades; the off fist on the grip
 within 7.8 cm (cut left strike), else 0.
 
-`motion check --camera game` on Andras's rig (2 m), the keypose clips
-beside the game's attacks and the Kimodo clips made from the same
+`motion check --camera game` on the 2 m hero rig, the keypose clips
+beside the reference attacks and the generated clips made from the same
 drawings (`bench/keypose/motion_check.txt`). _read_ is the game-camera
-read score (`docs/motion-check.md`: body change, blade sweep, tip arc,
-held load against readable references, 0..1):
+read score ([motion-check.md](motion-check.md): body change, blade sweep,
+tip arc, held load against readable references, 0..1):
 
 | clip                  | frames | skate | sink    | through body   | limits            | windup / strike / hold  | tip peak | read (body / sweep / arc)     |
 | --------------------- | ------ | ----- | ------- | -------------- | ----------------- | ----------------------- | -------- | ----------------------------- |
@@ -142,8 +142,8 @@ held load against readable references, 0..1):
 | kp_cut_left           | 36     | 0%    | 0 cm    | 23 fr, 8.3 cm  | 1 fr, worst 1 deg | 0.23 s / 0.10 s / 10 fr | 41.6 m/s | **0.43** (0.84 / 0.13 / 1.12) |
 | attack_1              | 21     | 86%   | 4.8 cm  | 21 fr, 4.4 cm  | 0                 | 0.13 s / 0.10 s / 3 fr  | 40.6 m/s | 0.37 (0.26 / 0.37 / 1.28)     |
 | attack_3              | 26     | 88%   | 10.8 cm | 4 fr, 2.2 cm   | 0                 | 0.13 s / 0.10 s / 14 fr | 45.5 m/s | 0.49 (0.39 / 0.33 / 1.96)     |
-| sf_cut_right (Kimodo) | 31     | 26%   | 89 cm   | 25 fr, 13.3 cm | 3 fr, 7 deg       | 0.20 s / 0.30 s / 1 fr  | 24.1 m/s | 0.75 (0.73 / 0.84 / 2.18)     |
-| sf_cut_left (Kimodo)  | 31     | 58%   | 93 cm   | 27 fr, 13.4 cm | 3 fr, 1 deg       | 0.27 s / 0.20 s / 0 fr  | 21.3 m/s | 0.35 (0.73 / 0.12 / 0.49)     |
+| gen_cut_right         | 31     | 26%   | 89 cm   | 25 fr, 13.3 cm | 3 fr, 7 deg       | 0.20 s / 0.30 s / 1 fr  | 24.1 m/s | 0.75 (0.73 / 0.84 / 2.18)     |
+| gen_cut_left          | 31     | 58%   | 93 cm   | 27 fr, 13.4 cm | 3 fr, 1 deg       | 0.27 s / 0.20 s / 0 fr  | 21.3 m/s | 0.35 (0.73 / 0.12 / 0.49)     |
 
 The follow-through carry (`--carry auto`): the drawn follow-throughs
 pull the hands back in after the contact, so the blade tip's path hooks

@@ -1,8 +1,9 @@
 # TODO — open follow-ups
 
 Catch-up list as of 2026-11-19 (`motion` repo, command `motionforge`). Scope
-and gates stay in `PLAN.md`; numbers and commands in `docs/measurements.md`,
-`docs/pro-bench.md`, and `docs/log.md`.
+and gates stay in [PLAN.md](../../PLAN.md); numbers and commands in
+[measurements.md](../measurements.md), [pro-bench.md](../pro-bench.md), and
+[log.md](log.md).
 
 ## Done 2026-11-19 (CI green on Linux + macOS + Blender + Python)
 
@@ -17,9 +18,9 @@ and gates stay in `PLAN.md`; numbers and commands in `docs/measurements.md`,
 - `motion-6`: restored `FOREARM_ROLL_DEG = 80.0` after `weights check --motion`
   proved `105 deg` increased twistless forearm `D_VOLUME` +79% (`335da4b`,
   fleet job `q4zkw4ju`).
-- `motion-13` (width refit): `width_refit.rs` + extended `contact.rs` (shins,
-  upper arms, arm-vs-arm, source slack, `--refit-width`, `8413c42`, fleet
-  audits `fphwu3tj`/`st2ake8d`, real-rig `8rygzvnw`).
+- `motion-13` (width refit): `width_refit.rs` + extended `contact/` (shins,
+  upper arms, arm-vs-arm, source slack, `--refit-width`, `8413c42`, clean-checkout
+  audits and real-rig `8rygzvnw`).
 - `motion-8`: pro bench held-out Mixamo set + `pro_bench.py planted` + machine-free
   `pro_fleet.sh` (`b2270cd`, `3cf2c1e`, fleet job `js23pxq6`).
 - `motion-7`: giant pass `motionforge giant --scale k` (Froude `sqrt(k)` timing,

@@ -19,8 +19,7 @@ SPEC = {
             "marks": {"12": "load", "15": "strike"}}]
 }
 
-CAMERA (HLH's follow camera, `bevy/src/fx.rs` `camera_follow` in source
-levels; the game's own record of it is `bevy/src/proportions.rs`):
+CAMERA (third-person follow camera, matching `camera_follow` / `proportions.rs`):
 focus 0.535 m above the body's centre, which is 1.0 m above his feet (the
 2 m body capsule, `assets/data/actor_physics.json`), so 1.535 m up; the
 eye 3.0 m from the focus (`Fence::distance` default) at pitch -0.32 rad
@@ -88,11 +87,10 @@ def shown_meshes(objs):
 
 
 def stature_unit(arm):
-    """Metres of the game per metre of this GLB: Andras is 2 m with his
-    head joint at 1.6836 m (`character.rs` `RigRest::stature`), and the
-    game scales a rig to that. The camera is moved instead of the
-    character (same picture; scaling the imported armature broke its
-    skinning). `stature` 0 keeps the GLB's own size."""
+    """Metres of the game per metre of this GLB: reference character height
+    is 2 m with head joint at 1.6836 m, and the game scales a rig to that.
+    The camera is moved instead of the character (same picture; scaling the
+    imported armature broke its skinning). `stature` 0 keeps the GLB's own size."""
     st = SPEC.get("stature", 2.0)
     head = arm.data.bones.get("DEF-spine.006")
     if not st or head is None:

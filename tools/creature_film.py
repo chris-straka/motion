@@ -1,10 +1,10 @@
-"""Headless Blender: film one creature clip as HLH's follow camera sees it.
+"""Headless Blender: film one creature clip as the game follow camera sees it.
 
     blender -b --factory-startup -P tools/creature_film.py -- --glb RIG.glb --clip NAME --out PREFIX
         [--frames 8] [--loops 1] [--move auto|no] [--crop x0,x1,y0,y1] [--measure-only]
         [--video PREFIX.mp4 --ffmpeg PATH]
 
-The camera is the game's (HLH `bevy/src/fx.rs`, `gameplay.rs`): 75 degrees
+The camera matches the Bevy follow camera (`fx.rs` / `gameplay.rs`): 75 degrees
 of vertical view, pitched 0.32 rad (18.3 degrees) down, 3.0 m behind the
 player and looking at a point 1.535 m above the player's feet. The player
 is not drawn; the creature stands in front of them, its nearest point

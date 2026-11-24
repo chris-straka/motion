@@ -104,7 +104,7 @@ def build_synced_hero_prop_scene():
     scene.frame_start = 1
     scene.frame_end = 12
 
-    arm = make_hero_armature("AndrasRig")
+    arm = make_hero_armature("HeroRig")
     weapon = make_prop_mesh("SwordProp", parent=arm, parent_bone="HandR")
     shield = make_prop_mesh("ShieldProp")
     helper = bpy.data.objects.new("HelperEmpty", None)

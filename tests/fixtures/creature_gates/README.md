@@ -1,14 +1,13 @@
 # Creature gate fixtures
 
 A made-up four-legged creature (no model, no corpus) and the planted bad
-inputs of gate 8 (`~/Games/MONSTERS.md`), made from it once on 2026-11-18
+inputs of gate 8 (monster rig specification), made from it once on 2026-11-18
 and pinned by sha256 in `expected.json`. `tools/creature_gates.py
 selftest` checks that `clean.glb` passes every check and that each planted
 file fails, naming its check. These files are never remade or edited to
 get a pass.
 
-How they were made (tools at their 2026-11-17 release builds on z:
-skintokens' `creature-rig` and motion's `motionforge`):
+How they were made (2026-11-17 release builds of `creature-rig` and `motionforge`):
 
     python3 tools/creature_fixture.py mesh.glb
     creature-rig rig mesh.glb rig.glb --rom rom.ron --blend 1.6

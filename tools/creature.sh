@@ -1,5 +1,5 @@
 #!/bin/bash
-# One Tripo creature to a game-ready HLH monster, headless, every gate of ~/Games/MONSTERS.md:
+# One Tripo creature to a game-ready monster, headless, every monster gate:
 #   tools/creature.sh NAME MODEL OUT
 # NAME is its name in the game (snake case), MODEL its Tripo export (.fbx, or a .glb), OUT a folder.
 # Builds the route's tools at their origin/main on this machine (tools/creature_deps.sh), then runs

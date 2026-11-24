@@ -1,7 +1,8 @@
 # Contact pass, hand sockets, grip and clip picks
 
-Built 2026-10-06 for the game character chain (genforge `gen character`,
-stage `animate`). Code: `rust/core/src/contact.rs`, `animate.rs`
+Built 2026-10-06 for the character animation chain (`animate`). Code:
+`rust/core/src/contact/` (`mod.rs`, `body.rs`, `ik.rs`, `mesh.rs`, `report.rs`,
+`slack.rs`, `socket.rs`, `solve.rs`), `animate.rs`
 (`retarget_picked`, `sync_sockets`), `standardize.rs` (sockets),
 `glb.rs` (`compact`); CLI `animate`, `grip`; renderer
 `blender/tools/clip_sheet.py`.
@@ -110,7 +111,7 @@ knuckle-line socket hit the body 42 times, the found grip 0.
 
 ## Limits
 
-- In `8413c42` (`motion-13`, `docs/width-refit.md`), `contact.rs` added upper-arm
+- In `8413c42` (`motion-13`, `docs/width-refit.md`), `contact/` added upper-arm
   (armpit), shin, and arm-vs-arm proxies (free hand moves first on weapon clips)
   plus per-frame source slack alongside `width_refit.rs`.
 - Locomotion clips with a drawn weapon get no blade proxy unless their

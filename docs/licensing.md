@@ -1,10 +1,10 @@
 # Licensing: what may train AutoPose, what may ship
 
-Hard constraint from `PLAN.md`, verified at build time (2026-10-01; video-model
-terms verified 2026-11-19). The manifest gate (`tools/manifest.py --check`)
+Hard constraint from [PLAN.md](../PLAN.md), verified at build time (2026-10-01;
+video-model terms verified 2026-11-19). The manifest gate (`tools/manifest.py --check`)
 enforces both the license allowlist and that every clip's `source` has a
-documented row in this file; the shipping half is owner procedure (provenance
-log in `~/Games/_tools/asset-pipeline.md`).
+documented row in this file; shipping provenance is tracked per asset in the
+target game project's asset log.
 
 ## Training data
 
@@ -35,10 +35,9 @@ commercial shipping.
 
 - Tripo textures/meshes: shipping assets only while subscribed (paid plan =
   commercial rights); free plan is CC BY non-commercial.
-- Suno: commercial rights only for songs made while subscribed (Pro/Premier),
-  per `asset-pipeline.md`.
-- Steam AI disclosure + provenance log: one row per shipped asset in the game's
-  log (see `~/Games/_tools/asset-pipeline.md`).
+- Suno: commercial rights only for songs made while subscribed (Pro/Premier).
+- Steam AI disclosure + provenance log: record one row per shipped asset in
+  the target project's provenance log.
 
 ## Tool licenses
 

@@ -109,7 +109,6 @@ class ProBenchMotion8Tests(unittest.TestCase):
 
     def test_pro_fleet_has_no_machine_pin(self):
         text = PRO_FLEET.read_text()
-        self.assertNotIn("--on f", text, "pro_fleet.sh must not pin --on f")
         self.assertNotIn("--on ", text, "pro_fleet.sh must not pin any machine with --on")
 
 

@@ -1,11 +1,9 @@
 # motionforge — build plan
 
-Written 2026-10-01 for the coding agents who will build it. Goal: make
-game animation for a stylized action game (Bevy/Rust) fast for one
-person. Context: `~/Games/_tools/roadmap.md`, `~/Games/_tools/asset-pipeline.md`
-("Animation" section). The rig is `gamerig`'s (formerly `rigforge`,
-`~/Games/_blender/gamerig`, Rigify-based, presets `biped_hero` and
-`quadruped_stalker`).
+Goal: make game animation for stylized action games (Bevy/Rust) fast for
+one person. Designed around Rigify-compatible humanoid skeletons (presets
+`biped_hero` and `quadruped_stalker`) and arbitrary multi-limbed creatures.
+Full doc map: [docs/README.md](docs/README.md).
 
 ## What it does (three features, in build order)
 
@@ -33,8 +31,8 @@ person. Context: `~/Games/_tools/roadmap.md`, `~/Games/_tools/asset-pipeline.md`
 ## Architecture
 
 - Blender extension (GPL-3.0-or-later) for the UI and Blender I/O.
-- Core math + model inference in a Rust CLI or library (MIT), same split
-  as `~/Games/_blender/retopo` (subprocess over files, deterministic).
+- Core math + model inference in a Rust CLI or library (MIT), communicating via
+  subprocess over JSON/GLB files for determinism.
 - Training in Python (PyTorch, local on an Apple M4, 16 GB). Exported
   model (ONNX or a small custom format) runs on CPU in the Rust core.
 
@@ -98,7 +96,7 @@ Spec, formats, limits and numbers: `docs/creature.md` and
 - `python/creature/`: Blender renderer (training poses with motion
   blur and random light; the exam film; the video model's start
   frame), a per-creature DINOv2-small joint finder (Apache-2.0, trained
-  on f's 8 GB card), the detector, and the exam driver.
+  on an 8 GB GPU), the detector, and the exam driver.
 - Gate: `python/creature/exam.py --check tests/fixtures/creature/exam_baseline.json`
   for every change; a change that makes any creature's exam worse is
   out. `cargo test` holds the deterministic half.

@@ -69,7 +69,7 @@ impl Default for CleanOptions {
             lock: true,
             // Off by default: on the game's 31 clips it took through-body
             // frames 889 -> 186 but doubled back-and-forth and added wrist
-            // turns past their limits (docs/log.md, 2026-11-13).
+            // turns past their limits (docs/archive/log.md, 2026-11-13).
             contact: None,
         }
     }

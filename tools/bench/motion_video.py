@@ -17,8 +17,8 @@ into rows of `--cols`), all panels the same length: each clip plays
 strike frames in the label. Also writes OUT.strip.png (8 frames a row).
 
 Camera, lights and floor: `motion_video_render.py`'s module doc (the game
-camera is HLH's follow camera: 3.0 m from a focus 1.535 m up, pitch
--18.3 deg, straight behind him, 75 deg vertical field of view).
+camera is a third-person follow camera: 3.0 m from a focus 1.535 m up, pitch
+-18.3 deg, straight behind the character, 75 deg vertical field of view).
 """
 
 import json

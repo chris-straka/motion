@@ -10,7 +10,7 @@ later run is matched to `x` in the first). Per measure, the set total and,
 per clip, the change from the first run. Lower is better for every defect
 (skate, sink, float, through the body, back-and-forth, joint limits);
 higher is better for readability (clear share, contrast). A change is kept
-only when no defect total rises and the pictures agree (docs/log.md).
+only when no defect total rises and the pictures agree (docs/archive/log.md).
 """
 
 import json

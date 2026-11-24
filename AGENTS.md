@@ -3,17 +3,17 @@
 Folder and GitHub repo: `motion` (`chris-straka/motion`); CLI command and
 Blender extension: `motionforge`.
 
-One rules file only: this `AGENTS.md` is it — never create a `CLAUDE.md` in this folder (Muse ignores it and warns while both exist).
+One rules file only: this `AGENTS.md` is it.
 
 Game-animation sidekick for Bevy games: retarget assist, motion stylizer,
-physics pass, and ML AutoPose. Same split as `~/Games/_blender/retopo`:
-an MIT-licensed Rust core + CLI, driven as a subprocess over files by
-a GPL Blender extension. Training lives in `python/` (PyTorch, local).
+physics pass, and ML AutoPose: an MIT-licensed Rust core + CLI, driven as a
+subprocess over files by a GPL Blender extension. Training lives in
+`python/` (PyTorch, local).
 
-Scope and gates: read `PLAN.md` first; open follow-ups are in
-`TODO.md`. Format + feature docs live in
-`docs/`. Every claim in docs carries a measured number and the command
-behind it (`docs/measurements.md`).
+Scope and gates: read [PLAN.md](PLAN.md) first; documentation index:
+[docs/README.md](docs/README.md) (active specs in `docs/`, historical notes
+in `docs/archive/`). Every claim in docs carries a measured number and the
+command behind it ([docs/measurements.md](docs/measurements.md)).
 
 ## Standing rules
 
@@ -40,20 +40,20 @@ acos, exp}` instead of the `f64` methods (Apple's and glibc's libm
   diff.
 - Never launch GUI binaries without explicit user approval. Headless
   Blender (`--background --factory-startup`) is fine.
-- Blender binary: `/Applications/Blender.app/Contents/MacOS/Blender`.
+- Blender binary: `/Applications/Blender.app/Contents/MacOS/Blender` on macOS, or `blender` on `PATH`.
 
 ## Build
 
 - `cd rust && cargo build --locked --release` produces
   `rust/target/release/motionforge`. Zero external crates (offline
-  build); keep it that way unless the owner approves a dependency.
+  build); keep it that way unless the maintainer approves a dependency.
 - Python training needs torch (not vendored):
   `pip install -r python/requirements.txt`. Manifest tooling is
   stdlib-only.
 
 ## Checks
 
-- `cd rust && cargo fmt --all --check && cargo test --locked --release`
+- `cd rust && cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --locked --release`
   must be green with zero warnings. CI (`.github/workflows/ci.yml`, green on
   `main`) runs it on Linux x86_64 and macOS arm64 — including
   `python3 tools/bench/pro_bench.py planted` — so goldens must be
@@ -92,14 +92,10 @@ acos, exp}` instead of the `f64` methods (Apple's and glibc's libm
 - `docs/` = format + feature docs. `data/`, `models/` = gitignored
   local-only inputs/outputs (never committed).
 
-## Siblings (separate repos, separate sessions)
+## Integration notes
 
-- `~/Games/_blender/gamerig` — the rig (Rigify fork, `biped_hero`/`quadruped_stalker`
-  presets). Its `tools/retarget_mixamo.py` is the reference P1
-  implementation; this repo's Rust retarget ports its rotation-transfer
-  math onto clip JSON. Never commit game rigs here.
-- `~/Games/_blender/retopo` — mesh stage; the structural template
-  (workspace layout, subprocess-over-files split, golden tests).
-- The games (`~/Games/<game>`, Bevy, Rust): retargeted clips land
-  there via `gamerig`'s (formerly `rigforge`) deform-only GLB export;
-  `gk validate assets` is the downstream gate.
+- Pairs with Rigify-compatible humanoid skeletons (`biped_hero` /
+  `quadruped_stalker` deform bones); the Rust retarget module implements
+  rotation transfer cleanly onto clip JSON without importing external rigs.
+- Deform-only glTF export targets any Bevy/Rust game runtime (standardized
+  skeleton + baked helper bone keys requiring zero runtime constraint code).

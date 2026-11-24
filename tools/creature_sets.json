@@ -30,12 +30,12 @@
   {"id": "held-out 6", "plan": "legless swimmer with a long tail and fins", "why": "a tail and no legs: a body that does not stand", "sha256": "47ea6c646fb38a96e27bc74d53b60276ac732cb0c12f00be868a8a0809b1263c"}
  ],
  "held_out_rules": [
-  "Picked from the owner's Tripo backlog by body plan before any run of creature.sh, from the creatures that are monsters (not human-shaped, cloaked or formless figures, not the companion moth).",
+  "Picked by body plan before any run of creature.sh, from exported monster meshes (excluding human-shaped, cloaked, or formless figures).",
   "None is in the dev set, in retopo's bench, in skintokens' video exam, or among the models tools/tripo_rig.py was first measured on (docs/tripo-rig.md, 2026-11-11).",
   "All six were run through earlier versions of the route on 2026-11-12/13 for reports; no constant of the picker or of creature.sh is fitted on them."
  ],
  "picker_out_of_sample": {
-  "why": "~/Games/_refs holds no artist-rigged animal outside the dev set (its Khronos Fox is dev animal `fox`). These six come from the same CC0 packs as the 12 benchmark animals and were never in the picker's calibration, so they are out of sample but by the same artists.",
+  "why": "Without external artist-rigged animals outside the dev set (its Khronos Fox is dev animal `fox`), these six come from the same CC0 packs as the 12 benchmark animals and were never in the picker's calibration, so they are out of sample but by the same artists.",
   "animals": [
    {"id": "stegosaurus", "from": "Quaternius Animated LowPoly Dinosaurs, CC0", "plan": "four-legged, tail, back plates", "sha256": "944a457338731a544a904a7c60d85d67c8f034c77e0205aae0ca3efc5711a002"},
    {"id": "triceratops", "from": "Quaternius Animated LowPoly Dinosaurs, CC0", "plan": "four-legged, frill and horns", "sha256": "ad66b51cc5fc44c9a3429a5b1b98a61621af08d58d102d8a817499bd6a7f5b5a"},

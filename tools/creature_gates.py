@@ -5,7 +5,7 @@
     python3 tools/creature_gates.py plant swap|hole|influence5|overbudget IN.glb OUT.glb
     python3 tools/creature_gates.py selftest [--work DIR]
 
-`check` runs gates 2 to 5 of `~/Games/MONSTERS.md` on one rigged creature
+`check` runs gates 2 to 5 of the monster rig spec on one rigged creature
 and prints one line per check. Every number is measured here, on the file
 given, by this script or by the tool it names; nothing is read from the
 route's own report. A tool that is missing or does not run is a failure of
@@ -22,10 +22,10 @@ otherwise; exit 2 when the file cannot be read.
 | 4 | `bend` | `weights check --poses ROM` (ROM from `creature-rig check --rom` on this file; the file's own clips are played too) exits non-zero or has a failing finding |
 | 4 | `weight_sum` | a skinned vertex whose weights sum further than 0.001 from 1 |
 | 4 | `influences` | a skinned vertex with more than 4 non-zero weights |
-| 5 | `idle_or_walk` | no clip HLH would play as idle (`idle`, `breath`) or walk (`walk`) that lasts 0.25 s and turns a joint at least 2 degrees (idle) or 5 (walk) |
-| 5 | `attack` | no clip HLH would play as an attack (`attack`, `lunge`, `bite`) that lasts 0.25 s and turns a joint at least 15 degrees |
+| 5 | `idle_or_walk` | no clip the game runtime would play as idle (`idle`, `breath`) or walk (`walk`) that lasts 0.25 s and turns a joint at least 2 degrees (idle) or 5 (walk) |
+| 5 | `attack` | no clip the game runtime would play as an attack (`attack`, `lunge`, `bite`) that lasts 0.25 s and turns a joint at least 15 degrees |
 
-Clips are found the way HLH's `rigged.rs` finds them: names sorted, the
+Clips are found the way a Bevy game's `rigged.rs` finds them: names sorted, the
 first whose lower-cased name contains one of the words.
 
 `plant` makes the planted bad inputs of gate 8 from a good rig: `swap`
@@ -451,7 +451,7 @@ def check(glb, work, quiet=False):
     put("influences", w["skinned_verts"] > 0 and w["verts_over_4"] == 0, ["count non-zero weights in the GLB"], 0,
         most_influences=w["most_influences"], verts_over_4=w["verts_over_4"], limit=MAX_INFLUENCES)
 
-    # Gate 5: clips HLH plays.
+    # Gate 5: clips the game runtime plays.
     cl = clips(g)
     idle, walk, att = clip_named(cl, IDLE_WORDS), clip_named(cl, WALK_WORDS), clip_named(cl, ATTACK_WORDS)
 

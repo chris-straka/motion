@@ -61,7 +61,7 @@ class Fixtures(unittest.TestCase):
                     self.assertGreater(cg.count_tris(g), cg.TRI_BUDGET)
                     self.assertEqual(cg.weight_stats(g)["verts_off_sum"], 0)
 
-    def test_hlh_clip_rule(self):
+    def test_game_clip_rule(self):
         cl = [{"name": "walk_spot", "seconds": 1, "turn_deg": 9}, {"name": "Walk", "seconds": 1, "turn_deg": 9},
               {"name": "bite_2", "seconds": 1, "turn_deg": 20}]
         self.assertEqual(cg.clip_named(cl, cg.WALK_WORDS)["name"], "Walk")

@@ -6,8 +6,8 @@
 
 ## Why
 
-The owner could not read the game's attacks ("I have no idea what he's
-doing"). The same keys read the same on the old rig, today's hero and two
+The initial prototype attacks were hard to read in third-person play.
+The same keys read the same on the old rig, today's hero and two
 professionally rigged bodies, so the fault was the clips: an arm moving
 over an upright body. Polishing those keys (stylizer rounds 1-3) did not
 change that. This tool authors an attack the other way round: where the
@@ -21,16 +21,16 @@ game camera (`motion check --camera game`) and from their joints, beside
 the game's `attack_1` and `attack_3`:
 
 |                                    | pro clips (6)   | game attack_1 / attack_3 |
-| ---------------------------------- | --------------- | ------------------------ |
-| hips turn through the strike       | 60-120 deg      | 0                        |
-| chest twist on top of that         | 30-60 deg       | 50 / 0                   |
-| lean into the cut                  | up to 30-57 deg | 0 / 12                   |
-| hips drop (body heights)           | 0.15-0.2        | 0.03 / 0.09              |
-| feet apart at the strike (heights) | 0.5-0.95        | 0.24 / 0.39              |
-| strike, load to fastest frame      | 2-5 frames      | 3                        |
-| tip speed                          | 40-50 m/s       | 40-45 m/s                |
-| body change at the game camera     | 0.56-0.88       | 0.29 / 0.40              |
-| readability score                  | 0.41-0.67       | 0.42 / 0.49              |
+| ---------------------------------- | --------------- | ---------------------------- |
+| hips turn through the strike       | 60-120 deg      | 0                            |
+| chest twist on top of that         | 30-60 deg       | 50 / 0                       |
+| lean into the cut                  | up to 30-57 deg | 0 / 12                       |
+| hips drop (body heights)           | 0.15-0.2        | 0.03 / 0.09                  |
+| feet apart at the strike (heights) | 0.5-0.95        | 0.24 / 0.39                  |
+| strike, load to fastest frame      | 2-5 frames      | 3                            |
+| tip speed                          | 40-50 m/s       | 40-45 m/s                    |
+| body change at the game camera     | 0.56-0.88       | 0.29 / 0.40                  |
+| readability score                  | 0.41-0.67       | 0.42 / 0.49                  |
 
 The sword already moved as fast and as far as a pro's. The body did not
 take part. On the correctness measures the pro clips are not clean
@@ -62,15 +62,15 @@ interpolated key values:
 
 1. Hips placed and turned; the spine twisted and leaned bone by bone;
    the head kept toward the target (never more than 70 deg off the chest).
-2. Each foot planted by its ball where the key stands it, with the game's
-   two-bone solver mirrored (`attack/ik.rs`: `two_bone`, `soft_reach` from
-   `hlh/bevy/src/ik/solve.rs`), written as a true hinge and aimed again
-   until the foot is on its point. The knee tracks the toes. The hips come
+2. Each foot planted by its ball where the key stands it, with the
+   reference two-bone solver mirrored (`attack/ik.rs`: `two_bone`,
+   `soft_reach`), written as a true hinge and aimed again until the foot
+   is on its point. The knee tracks the toes. The hips come
    down by exactly what the legs need to reach. A foot whose place changes
    steps (it lifts); one that only turns pivots on its ball, heel just up;
    a heel comes up when the ankle would fold more than 45 deg.
-3. The sword hand turned so the blade, held as the game holds it in the
-   hand socket (`tracks::held_pose`), runs from the grip to the tip with
+3. The sword hand turned so the blade, held in the engine's held weapon
+   socket pose, runs from the grip to the tip with
    the wrist as straight as that allows (50 deg at most; past that the
    blade gives, and the report says by how much); the forearm takes the
    hand's twist up to 80 deg; the arm solved to put the grip on its point.

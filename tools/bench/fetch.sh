@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Fetch the CC0 clip library for tools/bench/bench.py and pro_bench.py (outside the repo).
 #   Quaternius Universal Animation Library 1 + 2 [Standard], CC0 1.0
-#   (itch.io free downloads; License.txt in each zip). Checksums match the
-#   asset provenance log (~/Games/_tools/asset-pipeline.md).
-# Bodies come from meshweights' corpus: ~/Games/_blender/meshweights/bench/corpus/fetch.sh
+#   (itch.io free downloads; License.txt in each zip).
+# Bodies come from sibling meshweights' corpus fetch script when present.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FB="${FORGE_BENCH:-$HOME/.cache/forge-bench}"

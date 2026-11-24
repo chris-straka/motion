@@ -101,24 +101,21 @@ and a giant and numbers compare across characters.
   start-to-end travel and furthest excursion.
 
 - **Read at the game camera** (2026-11-13, `--camera game`;
-  `rust/core/src/readcam.rs`). The owner's question: can a viewer tell
-  an attack from the silhouette, seen from where the player sees him?
-  Per frame the skinned body and the blade are projected through HLH's
-  follow camera and filled into a 480x270 mask (the game's 1280x720 at
+  `rust/core/src/readcam.rs`). Core question: can a viewer tell
+  an attack from the silhouette, seen from the player camera?
+  Per frame the skinned body and the blade are projected through the
+  third-person follow camera and filled into a 480x270 mask (1280x720 at
   three eighths). The camera: focus 1.535 m up (0.535 m over the body's
   centre, 1.0 m over the feet), 3.0 m back at pitch -0.32 rad (-18.3
-  deg), straight behind him, 75 deg vertical field of view (HLH
-  `bevy/src/fx.rs` `camera_follow` in source levels, `Fence::distance`
-  default, `rig.pitch` at spawn; the game records the same numbers in
-  `proportions.rs`). He is scaled to the game's 2 m (head joint at
-  1.6836 m, `character.rs` `RigRest::stature`; `--stature`). The blade is
-  a 5 cm ribbon from the guard (0.11 m) to the tip (0.91 m, the props
-  kit's sword; `--blade-length`) held as the game holds it
-  (`tracks::held_pose`: grip 4 cm up and 8.5 cm back in the socket, the
-  blade cocked off the socket's +Y; `--blade-pose socket` for straight
-  out along +Y). The strike's frames are the attack timing's (peak,
-  load, windup start); the _settle_ is the first frame after the peak
-  with the tip under 15% of its peak speed. Parts:
+  deg), straight behind the character, 75 deg vertical field of view.
+  Characters are scaled to 2 m (head joint at 1.6836 m; `--stature`).
+  The blade is a 5 cm ribbon from the guard (0.11 m) to the tip (0.91 m;
+  `--blade-length`) held in the hand socket's default sword orientation
+  (grip 4 cm up and 8.5 cm back in the socket, the blade cocked off the
+  socket's +Y; `--blade-pose socket` for straight out along +Y). The
+  strike's frames are the attack timing's (peak, load, windup start);
+  the _settle_ is the first frame after the peak with the tip under 15% of
+  its peak speed. Parts:
   - _body change_: the largest `1 - IoU` of the body alone (no blade)
     against the clip's first frame, from the windup's start to the
     settle: does the body take part? (_pose change_, reported too, is
@@ -175,45 +172,42 @@ and a giant and numbers compare across characters.
     finger); with no measurable fingers the handle alone is judged and `fingers`
     says so.
 
-  **Calibrated on the game's own clips** (2026-11-15;
-  `motionforge motion check andras_rig.glb --camera game
---no-through --json` on the rig in `~/Games/hlh/player/andras`,
-  plus the authored presets on the same rig, and a positive grip
-  control on Lysan's rig, whose fingers the authoring tool can
-  close; `READ_FULL` unchanged — the new parts still reach them):
+  **Calibrated on reference clips** (2026-11-15;
+  `motionforge motion check hero_rig.glb --camera game --no-through --json`
+  plus the authored presets on the same 2.0 m hero rig, and a positive
+  grip control on a five-finger character rig whose fingers the
+  authoring tool can close; `READ_FULL` unchanged — the new parts still
+  reach them):
 
-  | clip                               | read               | body               | sweep              | arc                | grip (handle / curl)       |
-  | ---------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | -------------------------- |
-  | quirin-attack_2                    | 0.72               | 0.63               | 0.82               | 2.83               | 0 (18.7 cm / 0 deg)        |
-  | authored sweep                     | 0.49               | 0.64               | 0.44               | 2.29               | 0 (18.7 cm / 0 deg)        |
-  | authored cleave / backcut          | 0.43 / 0.42        | 0.75 / 0.69        | 0.39 / 0.37        | 1.82 / 1.74        | 0 (18.7 cm / 0 deg)        |
-  | attack_3 / attack_2 / attack_1     | 0.33 / 0.31 / 0.30 | 0.39 / 0.27 / 0.26 | 0.33 / 0.45 / 0.37 | 1.96 / 1.67 / 1.28 | 0 (18.7 cm / 0 deg)        |
-  | enemy-attack_3                     | 0.15               | 0.33               | 0.25               | 0.37               | 0 (18.7 cm / 0 deg)        |
-  | authored thrust                    | 0.03               | 0.60               | 0.13               | 0.08               | 0 (18.7 cm / 0 deg)        |
-  | idle                               | 0.01               | 0.06               | 0.01               | 0.03               | 0 (18.7 cm / 0 deg)        |
-  | Lysan authored sweep (socket pose) | 0.55               | 0.71               | 0.49               | 2.29               | **0.97 (3.8 cm / 34 deg)** |
-  | the same, fingers left open        | 0.55               | 0.71               | 0.49               | 2.29               | **0.34 (3.8 cm / 12 deg)** |
-  | the same, blade in the game's pose | 0.56               | 0.71               | 0.50               | 2.46               | **0 (12.1 cm / 34 deg)**   |
+  | clip                                      | read               | body               | sweep              | arc                | grip (handle / curl)       |
+  | ----------------------------------------- | ------------------ | ------------------ | ------------------ | ------------------ | -------------------------- |
+  | companion-attack_2                        | 0.72               | 0.63               | 0.82               | 2.83               | 0 (18.7 cm / 0 deg)        |
+  | authored sweep                            | 0.49               | 0.64               | 0.44               | 2.29               | 0 (18.7 cm / 0 deg)        |
+  | authored cleave / backcut                 | 0.43 / 0.42        | 0.75 / 0.69        | 0.39 / 0.37        | 1.82 / 1.74        | 0 (18.7 cm / 0 deg)        |
+  | attack_3 / attack_2 / attack_1            | 0.33 / 0.31 / 0.30 | 0.39 / 0.27 / 0.26 | 0.33 / 0.45 / 0.37 | 1.96 / 1.67 / 1.28 | 0 (18.7 cm / 0 deg)        |
+  | enemy-attack_3                            | 0.15               | 0.33               | 0.25               | 0.37               | 0 (18.7 cm / 0 deg)        |
+  | authored thrust                           | 0.03               | 0.60               | 0.13               | 0.08               | 0 (18.7 cm / 0 deg)        |
+  | idle                                      | 0.01               | 0.06               | 0.01               | 0.03               | 0 (18.7 cm / 0 deg)        |
+  | five-finger authored sweep (socket pose)  | 0.55               | 0.71               | 0.49               | 2.29               | **0.97 (3.8 cm / 34 deg)** |
+  | the same, fingers left open               | 0.55               | 0.71               | 0.49               | 2.29               | **0.34 (3.8 cm / 12 deg)** |
+  | the same, blade in the default hold pose  | 0.56               | 0.71               | 0.50               | 2.46               | **0 (12.1 cm / 34 deg)**   |
 
-  Read: the ordering the owner gave holds (the authored and Quirin
-  attacks over Andras's, over idle), and every sword clip on
-  Andras's own rig fails the grip at the same place — with the
-  game's held pose the handle's middle sits 18.7 cm from the
-  knuckle, at the wrist, on all 31 clips, and no finger joint ever
-  turns. The authored attacks read clearly on the same rig and
-  fail the grip identically, which is the owner's "reads clearly
-  but the grip is wrong" as a number. The thrust reads 0.03 from
-  behind by design of the measure: its blade points away and its
-  tip is behind the body, so it reads by the lunge the body part
-  (0.60) records; an attack for this camera should cut across it
-  (`docs/attack.md`). A blind side-by-side judge (same-frame
-  strips at the game camera; the judge saw only the pictures)
-  picked the authored sweep over attack_1 for readability and the
-  closed over the open hand at the hand camera, and called the
-  identical-frame control "same"; at game-camera distance it
-  called the grip pair the wrong way — from behind, the fingers
-  are on the far side of the handle, which is why the grip is
-  measured on the joints and judged close up, not from the
+  Read: the authored and companion attacks outscore baseline `attack_1..3`
+  over idle, and every sword clip on the single-finger hero rig fails the
+  grip at the same place — with the default held pose the handle's middle
+  sits 18.7 cm from the knuckle, at the wrist, on all 31 clips, and no
+  finger joint ever turns. The authored attacks read clearly on the same
+  rig and fail the grip identically ("reads clearly, grip is wrong"). The
+  thrust reads 0.03 from behind by design of the measure: its blade
+  points away and its tip is behind the body, so it reads by the lunge the
+  body part (0.60) records; an attack for this camera should cut across
+  it ([attack.md](attack.md)). A blind side-by-side judge (same-frame
+  strips at the game camera; the judge saw only the pictures) picked the
+  authored sweep over attack_1 for readability and the closed over the
+  open hand at the hand camera, and called the identical-frame control
+  "same"; at game-camera distance it called the grip pair the wrong way —
+  from behind, the fingers are on the far side of the handle, which is why
+  the grip is measured on the joints and judged close up, not from the
   silhouette.
 
   **2026-11-16 (five-finger wrist fix, distal-mitten palm pocket & twist helpers)**:
@@ -240,8 +234,8 @@ and a giant and numbers compare across characters.
   constants (`readcam::GRIP_MITTEN_PALM_SHARE = 1.0`,
   `GRIP_MITTEN_CURL_FULL_DEG = 35`), the values the blind-judged measure
   had before; change them only after a blind same-frame judge backs it.
-  Measured with the restored measure (fleet job `y45x3xbz`, on z, the
-  game's rigs at its commit `bd3610cd`; `motionforge attack --preset all`, then
+  Measured with the restored measure (reference hero and five-finger
+  control rigs, `motionforge attack --preset all`, then
   `motionforge motion check --camera game --blade-pose socket
 --no-through --json`; the control's rig through `standardize`
   and `socket` first):
@@ -337,20 +331,18 @@ python3 tools/bench/motion_video.py OUT.mp4 'attack_1=hero.glb:attack_1' 'attack
     --cam game --prop sword.glb@Socket_Hand_R --prop-pose game --marks check.json --cols 2
 ```
 
-**Videos at the game camera** (2026-11-13; the owner: "Wouldn't video
-be better for me to evaluate?"): `motion_video.py` renders each row as
-a panel at HLH's follow camera (the numbers above; `--cam lock` is the
-locked-on camera over his right shoulder, `--cam close` a 3/4 front
-view framing the whole clip with a 34 deg lens), EEVEE with the
+**Videos at the game camera** (2026-11-13): `motion_video.py` renders each row
+as a panel at the reference follow camera (the numbers above; `--cam lock` is
+the locked-on camera over the character's right shoulder, `--cam close` a 3/4
+front view framing the whole clip with a 34 deg lens), EEVEE with the
 character's own materials, a plain floor, one soft sun (55 deg up, 45
 deg left of the view, 3 deg wide) and sky light, so the shadow falls
 short beside him; `--engine workbench` where EEVEE will not run. Panels
 play in step: twice at game speed, then once at half speed (marked
 "x0.5 speed"); `--marks` takes `motion check --json` and labels the
-load and strike frames. The prop's origin is its grip (the props kit's
-convention) and it is held as the game holds the sword (`--prop-pose
-game`; `socket` lays the blade along the socket's +Y, which on HLH's
-rigs crosses the body). The camera is moved, not the character, to
+load and strike frames. The prop's origin is its grip and it is held in
+the default game hold pose (`--prop-pose game`; `socket` lays the blade
+along the socket's +Y). The camera is moved, not the character, to
 show him at 2 m (`stature`). Also writes OUT.strip.png; OUT.png with
 `--only 0,12` renders stills.
 
@@ -376,10 +368,10 @@ three worst of each measure: `tools/bench/motion_sheet.py strip`
 
 | measure          | worst three                                                                                                                        | what the strips show                                                                                                                                                                                                                                                |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| skate            | dodge, land, sf_idle (100% of frames)                                                                                              | sf_idle stands sunk to the waist (below); land and dodge drift 7-14 cm over a plant, too small to see at strip scale                                                                                                                                                |
-| ground           | sf_cut_left 93 cm, sf_cut_right 89, sf_sheathe 88 (all 7 `sf_*` clips 86-93 cm)                                                    | real: these clips put the hips about 1 m lower than every other clip (hips local y about -1.0 under a root at +1.0), so the body is in the floor to the waist                                                                                                       |
+| skate            | dodge, land, gen_idle (100% of frames)                                                                                             | gen_idle stands sunk to the waist (below); land and dodge drift 7-14 cm over a plant, too small to see at strip scale                                                                                                                                               |
+| ground           | gen_cut_left 93 cm, gen_cut_right 89, gen_sheathe 88 (all 7 `gen_*` clips 86-93 cm)                                                | real: these clips put the hips about 1 m lower than every other clip (hips local y about -1.0 under a root at +1.0), so the body is in the floor to the waist                                                                                                       |
 | floating         | the enemy's death 41 cm, a second swordsman's death 29 and third attack 23 (every frame of all ten of those two characters' clips) | `worst_float.png`: the retargeted Mixamo clips hold the feet 7-23 cm up; the shadows sit off the feet, consistent with that, but at strip scale not unmistakable                                                                                                    |
-| through the body | attack_1, attack_2, hit, idle: every frame, 3-5 cm                                                                                 | `worst_through_standing.png`: real (the hand sinks into the belly in hit, the forearm cuts across the chest in attack_1 frame 12 and attack_2 frames 5-6); the sunk `sf_*` clips also score 100% at 13-14 cm, where the strips show little but a torso in the floor |
+| through the body | attack_1, attack_2, hit, idle: every frame, 3-5 cm                                                                                 | `worst_through_standing.png`: real (the hand sinks into the belly in hit, the forearm cuts across the chest in attack_1 frame 12 and attack_2 frames 5-6); the sunk `gen_*` clips also score 100% at 13-14 cm, where the strips show little but a torso in the floor |
 | jerk             | twirl 8,700, attack_1 3,650, attack_2 3,150 m/s^3 (arm.R mean)                                                                     | fast moves, not noise: the twirl is a spin and the attacks are keyed at 24 fps with sharp corners in the hand's path (visible in the trail)                                                                                                                         |
 
 Where the numbers mislead:

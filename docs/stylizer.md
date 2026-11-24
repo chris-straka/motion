@@ -71,9 +71,9 @@ offset from rest. `core/tests/motion_check.rs` runs both modes on a GLB.
 The game's own sword attacks on the hero's rig (hand-keyed at 24 fps,
 0.67-0.83 s), each stylized both ways with default settings, then scored
 with `motion check` (`docs/motion-check.md`) and rendered as one
-side-by-side reel and an 8-frame strip per attack (kept with the game's
-files, not in this repo). Commands: `stylize --mode per-bone --suffix
-_old`, then `stylize --mode body --suffix _new`, on f.
+side-by-side reel and an 8-frame strip per attack (kept with external
+reference files, not in this repo). Commands: `stylize --mode per-bone --suffix
+_old`, then `stylize --mode body --suffix _new`, on Linux.
 
 | clip              | skate frames / cm | through body frames / deepest | arm jerk mean | windup / strike / hold |
 | ----------------- | ----------------- | ----------------------------- | ------------- | ---------------------- |

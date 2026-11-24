@@ -1,6 +1,6 @@
 # Goal: motion-3 — Create `tools/gate/carbon.sh` (guarded Carbon/Neon gate for motion)
 
-Create an executable bash script `tools/gate/carbon.sh` that serves as the reusable guarded gate for automated work in `~/Games/_blender/motion` (matching the pattern used in `skintokens/tools/gate/carbon.sh`).
+Create an executable bash script `tools/gate/carbon.sh` that serves as the reusable guarded gate for automated work in `motion` (matching the pattern used in `skintokens/tools/gate/carbon.sh`).
 
 ## Scope
 

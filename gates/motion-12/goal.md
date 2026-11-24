@@ -1,6 +1,6 @@
 # motion-12: Code-health sweep
 
-Clean up Code Health items 2-5 in `~/Games/_blender/motion` under
+Clean up Code Health items 2-5 in `motion` under
 `tools/gate/carbon.sh` while keeping every CLI golden byte-identical and
 all tests passing with zero warnings (`RUSTFLAGS="-D warnings"`).
 

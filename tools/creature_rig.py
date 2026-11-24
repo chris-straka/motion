@@ -42,12 +42,12 @@ def main():
     ar = which(
         "autorig",
         args.autorig,
-        [os.path.join(sib, "skintokens/bin/autorig"), os.path.join(home, "Games/_blender/skintokens/bin/autorig")],
+        [os.path.join(sib, "skintokens/bin/autorig")],
     )
     sk = which(
         "skintokens",
         args.skintokens,
-        [os.path.join(sib, "skintokens/bin/skintokens"), os.path.join(home, "Games/_blender/skintokens/bin/skintokens")],
+        [os.path.join(sib, "skintokens/bin/skintokens")],
     )
     mf = which(
         "motionforge",

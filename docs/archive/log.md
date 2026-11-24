@@ -1,11 +1,10 @@
 # Log: what was tried, kept and dropped
 
 Each entry: the change, the measure it was judged on, the result on the
-game's clip set, and whether it stayed. The set is the hero's rig with
-the game's 31 clips (HLH `player/andras/models/glb/andras_rig.glb`,
-copied outside this repo; never committed). Scores: `motion check
---json`, totals by `tools/bench/motion_compare.py`. Pictures:
-`tools/bench/motion_sheet.py` (painted).
+game's clip set, and whether it stayed. The set is the reference hero rig
+with 31 clips (`hero_rig.glb`, kept outside this repo; never committed).
+Scores: `motion check --json`, totals by `tools/bench/motion_compare.py`.
+Pictures: `tools/bench/motion_sheet.py` (painted).
 
 ## 2026-11-13, round 1
 
@@ -34,11 +33,11 @@ copied outside this repo; never committed). Scores: `motion check
   | key-pose contrast deg (mean) | 33.8  | 33.9  |
 
   What is left of skate is the two long deaths' slides (falls past the
-  35 cm lock cap: enemy-death 71 cm, quirin-death 78 cm; they floated
-  before, so no plants were scored) and sf_walk's 30 cm (an in-place
+  35 cm lock cap: enemy-death 71 cm, companion-death 78 cm; they floated
+  before, so no plants were scored) and gen_walk's 30 cm (an in-place
   walk, left to the game's speed). The floating frames left are jumps
-  (leap 18, twirl 7, run 6) and the shadowflame draw's 17. Pictures: the
-  death's boots no longer sink to the shins at frames 9-12; sf_idle stops
+  (leap 18, twirl 7, run 6) and the magic draw's 17. Pictures: the
+  death's boots no longer sink to the shins at frames 9-12; gen_idle stops
   standing in the floor to its chest; the enemy attack's feet meet their
   shadows. Cost: back-and-forth +1.8 mm over the set (leg chains; the
   lifts and locks), 2 more joint-limit frames.
@@ -60,19 +59,19 @@ copied outside this repo; never committed). Scores: `motion check
     worse (5.3 -> 9.7 cm). Cycles are now left alone (their stance speed
     is the game's to match).
   - A 12 cm cap on how far a lock may move a foot (to spare falls) threw
-    away most locks (sf_cough's feet drift 33 cm while standing): set
+    away most locks (gen_cough's feet drift 33 cm while standing): set
     skate 17 -> 185 cm. Cap raised to 35 cm: only the two deaths' long
     slides are left.
 
 - **Treadmill detection** in `motion check` needs every foot to agree
   (a single foot skimming the floor next to a standing one was read as
   a belt) and the cycle to loop (each foot back under the hips; the
-  Quirin lunge `quirin-attack_2` was read as a 1.9 m/s belt).
+  companion lunge `companion-attack_2` was read as a 1.9 m/s belt).
 
 ### Dropped (for now)
 
 - **Contact pass in `clean` by default.** Through-body frames 889 -> 186
-  on the set, but back-and-forth doubled (death 0.2 -> 9.1 mm, sf_cough
+  on the set, but back-and-forth doubled (death 0.2 -> 9.1 mm, gen_cough
   2.5 -> 13.9) and wrists turned past their limits (frames 274 -> 544):
   it keeps each hand's world rotation while moving the wrist up to
   24 cm, and its per-frame offsets jitter. Kept behind `clean --contact`.
@@ -101,7 +100,7 @@ the round-2 treadmill: skate 355.8).
   facing, carried in the upper bone's frame). The round-1 hinge came from
   the limb's own bend, which is noise on a nearly straight limb: the
   elbow could flip between frames (the death's left arm spiked 265 mm).
-  A first try took the axis from the rest pose's bend: Andras's knees
+  A first try took the axis from the rest pose's bend: the hero rig's knees
   rest bent 3 deg partly sideways, and joint-limit frames rose 245 -> 303
   without contact; the anatomical axis brings them back to 245.
 - **Rate limit on the contact corrections** (0.9 character heights/s,
@@ -137,8 +136,8 @@ the wrist) for forearm-through-chest, and judge `hit` with the owner.
 
 ## 2026-11-13, round 2: the stylizer on the game's attacks
 
-Eleven attack clips (attack_1-3, quirin-attack_1-3, enemy-attack_1-3,
-sf_cut_left/right), from the cleaned set, stylized with round 1's body
+Eleven attack clips (attack_1-3, companion-attack_1-3, enemy-attack_1-3,
+gen_cut_left/right), from the cleaned set, stylized with round 1's body
 mode (`--snap-speed 0 --accent none`) and with this round's (the sword
 hand's stops are keys too; exaggeration scaled by `6 m/s / hand peak`,
 x0.41-0.94 on these clips).
@@ -198,28 +197,28 @@ attack_1 now: back-and-forth 29 mm (round 2: 63), the windup is held up
 beside the head for a beat where the original swings wide to the right
 (`bench/round1/attack_1_round3.*`): a different windup, the owner's call.
 Still rougher than the originals everywhere. Next: find the remaining
-spikes (quirin-attack_2 652 mm at frame 14, attack_1 284 at 6: the
+spikes (companion-attack_2 652 mm at frame 14, attack_1 284 at 6: the
 hold-to-strike corner of the time warp), then `--stylize auto`: stylize a
 clip only where its defects stay within the original's and its windup or
 hold grows, and report per clip which won.
 
 ## 2026-11-13: videos at the game camera, and a readability measure
 
-The owner on the old strips: "In pic 2 I have no idea what he's doing,
+Feedback on the old strips: "In pic 2 I have no idea what he's doing,
 is that an attack animation? If so, it fails completely." "The sword
 model in pic 2 is bad." "Shadows ... are wild." "Wouldn't video be
 better for me to evaluate?"
 
-**Videos** (`tools/bench/motion_video.py`, kept): MP4 panels at HLH's
+**Videos** (`tools/bench/motion_video.py`, kept): MP4 panels at the third-person
 follow camera (3.0 m behind, focus 1.535 m up, pitch -18.3 deg, 75 deg
 vertical; `docs/motion-check.md` has the sources), EEVEE, painted, plain
-floor, one soft sun. On the grafted Andras (the starred head on the
-travel body, 1.0 m tall in its GLB, shown at the game's 2 m by moving
-the camera) with the game's clips put on by `motionforge animate
---no-contact`, and the props kit's sword held as the game holds its
-blade (`tracks::held_pose`). Checked by eye: the grip is in the right
-hand and the blade comes out of the fist in idle and through the
-attacks; laid along the socket's +Y instead, the blade crosses his body.
+floor, one soft sun. On the grafted hero rig (1.0 m tall in its GLB,
+shown at 2 m by moving the camera) with the reference clips put on by
+`motionforge animate --no-contact`, and the prop sword held in the
+default game hold pose (`HELD_ROT` / `HELD_GRIP`). Checked by eye: the grip
+is in the right hand and the blade comes out of the fist in idle and
+through the attacks; laid along the socket's +Y instead, the blade crosses
+the body.
 The grafted rig has no finger animation, so the hand stays open round
 the grip. Scaling the imported armature broke its skinning in Blender
 (the arms stayed in the rest pose); moving the camera instead does not.
@@ -246,9 +245,9 @@ weighted by step length (slow jitter at the ends is not a wiggle).
 | ---------------------------- | ---- | ---- | ----- | ---- | ----------------- |
 | CC0 Sword_Attack (reference) | 0.58 | 0.69 | 0.55  | 1.30 | 0                 |
 | CC0 Sword_Regular_B          | 0.54 | 0.56 | 0.34  | 1.82 | 0                 |
-| quirin-attack_2              | 0.66 | 0.87 | 0.51  | 2.15 | 0                 |
-| quirin-attack_3              | 0.62 | 0.55 | 0.80  | 1.43 | 0                 |
-| quirin-attack_1              | 0.60 | 0.71 | 0.65  | 0.96 | 1                 |
+| companion-attack_2           | 0.66 | 0.87 | 0.51  | 2.15 | 0                 |
+| companion-attack_3           | 0.62 | 0.55 | 0.80  | 1.43 | 0                 |
+| companion-attack_1           | 0.60 | 0.71 | 0.65  | 0.96 | 1                 |
 | enemy-attack_2               | 0.59 | 0.69 | 0.47  | 1.62 | 0                 |
 | attack_3                     | 0.49 | 0.40 | 0.35  | 1.93 | 0                 |
 | attack_2                     | 0.48 | 0.31 | 0.52  | 1.66 | 0                 |
@@ -259,13 +258,12 @@ weighted by step length (slow jitter at the ends is not a wiggle).
 
 Command: `motionforge motion check <grafted>.glb --camera game --json`
 (and the same on the CC0 Quaternius UAL clips put on the same body).
-The ranking the owner asked for holds: a clearly readable attack (the
-CC0 reference 0.58, attack_3 0.49) above attack_1 (0.42) above idle
-(0.04). What it says about the game: Andras's three attacks barely move
-the body (0.29-0.40), where Quirin's, the husk's first two and the CC0
-ones reach 0.54-0.88 (the husk's third is 0.37); none of the attacks,
-the CC0 ones included, holds its load a beat. Not yet checked against the
-owner's own picks.
+The requested ranking holds: a clearly readable attack (the CC0
+reference 0.58, attack_3 0.49) above attack_1 (0.42) above idle
+(0.04). What it says about the baseline set: the hero's three attacks
+barely move the body (0.29-0.40), where companion attacks, the adversary's
+first two and the CC0 ones reach 0.54-0.88 (the adversary's third is 0.37);
+none of the attacks, the CC0 ones included, holds its load a beat.
 
 ## 2026-11-13, creature video: views aligned
 
@@ -319,7 +317,7 @@ and draw the fit back over the pictures). How and every number:
 - Known answer: a hand-posed fixture drawn front and side fits back
   within 0.00 deg per limb (0.85 deg with MediaPipe's depth 5 cm off;
   one view alone with that depth error: 13 deg).
-- Made the two diagonal two-handed cuts from HLH's drawn sheets
+- Made the two diagonal two-handed cuts from reference drawn sheets
   (`kp_cut_right`, `kp_cut_left`, 36 frames): no skate, no sink, limits
   4 and 1 frames (worst 5 deg), windup 0.20 s, strike 0.10 s, tip 41-49
   m/s. The game's attack_1 and attack_3 skate 86-88% and sink 5-11 cm;
@@ -454,7 +452,7 @@ The test that matters for the humanoid route: Mixamo's clips untouched on
 Mixamo's own characters (X Bot for the three the game uses: Cross Slash,
 High Attack, Inward Slashing; the peasant girl for Great Sword Slash and
 Sword And Shield Slash), against the same clip after `motionforge
-animate` on the starred Andras (52 bones, fingers), Quirin's sword in a
+animate` on the five-finger hero (52 bones, fingers), companion sword in a
 palm socket on both. Measured: the sword's direction per frame, original
 vs ours (`blade_track.py`, scratch).
 
@@ -463,7 +461,7 @@ vs ours (`blade_track.py`, scratch).
 - **Body motion: nothing.** Every bone's world rotation change matches
   (max error 0.00002 deg); root travel kept (High Attack's 1.44 m lunge).
 - **The hand's roll: 24 deg in every frame.** `animate` aligned each
-  rest bone's direction, not its roll, so Andras's palm kept the rest
+  rest bone's direction, not its roll, so the hero's palm kept the rest
   difference between the two rigs. Now aligned by the knuckle line
   (index to little finger roots): 24 -> 9.7 deg on all three clips. The
   rest is the two hands' shapes (their knuckles slant differently against
@@ -472,7 +470,7 @@ vs ours (`blade_track.py`, scratch).
 - **No palm socket on a Mixamo rig.** `motionforge socket` looked fingers
   up by the DEF names only; now through the name mapper (X Bot, the
   peasant). Its palm side comes from the thumb's root (curl axes differ
-  between rigs). Andras's socket is byte-identical.
+  between rigs). The hero's socket is byte-identical.
 - My reference was wrong first: Blender's exporter wrote the X Bot's
   bone-parented socket 90 deg off its own knuckle line, which read as
   "ours is 112 deg off". Sockets on references now come from `motionforge
@@ -482,10 +480,10 @@ socket`, never from Blender.
   and halves foot sliding: skate 17.3 -> 9.4, 21.2 -> 16.3, 26.4 -> 9.5
   cm; through-body 3 and 9 frames -> 0.
 
-What the game's current copies lose is the game's, not motionforge's:
-the hips pinned over his spot (the lunge goes), the hold from the old
-socket plus `tracks::held_pose` (blade down and into his body where the
-original holds it level), and no finger bones on `andras_rig` (an open
+What older copies lost belongs to the earlier rig setup, not motionforge:
+the hips pinned over the spot (the lunge goes), the hold from the old
+socket plus the older held pose (blade down and into the body where the
+original holds it level), and no finger bones on `hero_rig` (an open
 hand).
 
 ### Renders
@@ -498,7 +496,7 @@ hand).
   measured from the lowest bone, and a socket held through its bone takes
   its offset from the hand in glTF.
 
-### Choosing the attacks (one-handed sword on Andras)
+### Choosing the attacks (one-handed sword on the hero rig)
 
 - Keep: Sword And Shield Slash (one-handed cut, 52 frames, sword path 0
   deg off the original), Cross Slash, High Attack (needs root motion in
@@ -509,8 +507,8 @@ hand).
 ## 2026-11-14, round 8: Kimodo 1.2 seeds against mocap
 
 93 takes of the ten combat prompts (8 seeds each, plus 12 with no root
-path) and 24 testing length and wording, each retargeted onto the starred
-Andras and scored as in round 7.
+path) and 24 testing length and wording, each retargeted onto the
+five-finger hero and scored as in round 7.
 
 - **Copy: as faithful as mocap.** Body 0.00002 deg; the sword 7-11 deg off
   its source (mocap 10-12).
@@ -535,7 +533,7 @@ thrust`: blade 0.99 ahead at 0.40 m reach, feet 3.8 cm, nothing
 ## 2026-11-14, round 9: twelve more Mixamo clips, the thrust, a sword set
 
 Twelve Mixamo clips (exported on the peasant girl: 65 joints plus eyes and
-ribbons, which the mapper leaves alone) copied onto the starred Andras:
+ribbons, which the mapper leaves alone) copied onto the five-finger hero:
 body 0.00002 deg from every source, the sword 8.2-8.4 deg off the source
 hand (21.5 on the lead-hand knife stab).
 
@@ -568,8 +566,8 @@ The audit's four faults in `motion check --camera game`, fixed in
   fingertips to the handle's line. On the game's own rig every
   sword clip fails it at the wrist (handle 18.7 cm off the knuckle,
   no finger ever turns), the authored attacks included — the
-  owner's "reads clearly but the grip is wrong", measured. On
-  Lysan's rig the authored grip passes (3.8 cm, 34 deg a joint,
+  "reads clearly but the grip is wrong", measured. On the five-finger rig
+  the authored grip passes (3.8 cm, 34 deg a joint,
   0.97), the same attack with the fingers left open fails on curl
   (12 deg, 0.34), and the game's blade pose on her palm socket
   fails on the handle (12.1 cm, 0).
@@ -621,8 +619,8 @@ read 1.00 after its curl fell from 47 to 26 deg. The measure now owns
 tolerance 9bc9b46 loosened (`tests/attack.rs`, grip miss 1e-9 -> 1e-6)
 is back at 1e-9.
 
-- Measured (fleet job `y45x3xbz` on z, the game's
-  rigs at its commit `bd3610cd`: `motionforge attack --preset all`, then `motionforge
+- Measured (macOS build workstation, reference rigs at commit `bd3610cd`:
+  `motionforge attack --preset all`, then `motionforge
 motion check --camera game --blade-pose socket --no-through --json`):
   single-finger hero grip `0.345` (handle 9.1 cm, curl 26 deg), overall
   sweep / cleave / backcut / thrust `0.345 / 0.345 / 0.345 / 0.172`;
@@ -672,13 +670,13 @@ green GitHub Actions CI (`rust` Linux + macOS, `blender`, `python`):
   `attack/mod.rs`.
 - **Width-first retarget + extended contact pass (`motion-13`, `8413c42`, CI
   `44659217781`)**: added `rust/core/src/width_refit.rs` and extended
-  `rust/core/src/contact.rs` (shins, upper arms, arm-vs-arm with free-hand
+  `rust/core/src/contact/` (shins, upper arms, arm-vs-arm with free-hand
   weapon priority, per-frame `SourceSlack`), wired into `animate --refit-width`
   (default on). Verified on real game rigs (`fleet 8rygzvnw`): hero
   `through_cm2 -42%`, five-finger control `-82%`, `forearm_cm2 = 0.0`.
 - **Pro bench Mixamo held-out + planted bad-clip self-test (`motion-8`,
   `b2270cd` / `4a3969b` / `3cf2c1e`, CI `44668865968`)**: added `--lib`,
-  `--heldout`, `pro_bench.py planted`, removed `--on f`, and ran dev (UAL1+UAL2,
+  `--heldout`, `pro_bench.py planted`, removed machine-pin flags, and ran dev (UAL1+UAL2,
   84 clips) + held-out Mixamo (9 clips) via fleet job `js23pxq6` (committed in
   `docs/pro-bench.md` alongside `5je56jqj`).
 - **Giant pass (`motion-7`, `42f6a74`, CI `44672704317`)**: added

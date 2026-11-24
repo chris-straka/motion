@@ -3,7 +3,7 @@
 motionforge CLI).
 
     pro_bench.py calibrate [--out DIR] [--libs ual1,ual2] [--lib NAME=PATH.glb ...]
-    pro_bench.py run --target andras=RIG.glb [--target name=RIG.glb ...]
+    pro_bench.py run --target hero=RIG.glb [--target name=RIG.glb ...]
                      [--libs ual1,ual2] [--lib NAME=PATH.glb ...]
                      [--heldout mixamo] [--clips a,b] [--stages ...] [--out DIR]
                      [--jobs N]

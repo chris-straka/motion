@@ -146,7 +146,7 @@ feet sliding; kept to set beside `walk`) are plain forward kinematics.
 gives every body the gait can't read (two-legged, winged, many-limbed,
 legless, or four-legged with a profile that dropped a joint) something to
 stand in and something to strike with, and a four-legged body its idle.
-skintokens' creature route calls it after the gait (`docs/creature-route.md`).
+skintokens' creature route calls it after the gait ([archive/creature-route.md](archive/creature-route.md)).
 
 - **The body, by the skeleton's shape.** The centre line is followed from
   the root by structure: at each bone the child nearest the mirror plane
@@ -178,7 +178,7 @@ skintokens' creature route calls it after the gait (`docs/creature-route.md`).
   past the gate's limits; the judge saw the attack on trex, velociraptor,
   bat, dragon and the retopo bench creatures, not on the spider and wasp
   before the striker change (their rerun on the final clips is in
-  `docs/creature-route.md`).
+  [archive/creature-route.md](archive/creature-route.md)).
 
 ## Lining up the views of a generated video
 
@@ -227,7 +227,7 @@ goldens are unchanged):
 
 Known answers (`rust/core/tests/creature_align.rs`, the fixture biped,
 1 px noise; `cargo test --locked --release -p motion_core --test
-creature_align -- --nocapture`, f, 2026-11-13):
+creature_align -- --nocapture`, Linux workstation, 2026-11-13):
 
 | case                                                                                    | before                           | after                                                                                                                                  |
 | --------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
@@ -239,8 +239,8 @@ creature_align -- --nocapture`, f, 2026-11-13):
 | every fifth frame dropped, timestamps kept                                              | 40 frames                        | resampled to 50, every joint within 6 px of the full clip                                                                              |
 
 **The Seedance wolf walk with the views lined up (2026-11-13): still
-rejected, and rightly.** Same detections as 2026-11-11 (fleet job
-`vvyr2dq3` on f), `creature-solve --align-views --align-time auto`:
+rejected, and rightly.** Same detections as 2026-11-11,
+`creature-solve --align-views --align-time auto`:
 
 |                                      | as read             | lined up                                                                                                            |
 | ------------------------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------- |
@@ -253,7 +253,7 @@ rejected, and rightly.** Same detections as 2026-11-11 (fleet job
 The camera fit is worth keeping on for every generated clip: the rays
 now cross (residual 112 -> 13 mm). Rendered on the wolf through both
 cameras beside the video (`python/creature/render.py --mode motion`,
-y8, every 6th frame of the first 48; local `bench/creature-video/`),
+every 6th frame of the first 48; local `bench/creature-video/`),
 the forced solve with the fit stands on the floor and steps as the
 video does (`tools/creature_feet.py --creature creature.json
 clip.json`): lowest foot joint 11-30 mm over the clip (rest 22-26 mm),

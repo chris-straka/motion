@@ -24,8 +24,9 @@ check's, scaled by the character's height.
    game's to match), not on a plant that would move the foot more than
    35 cm (a fall or a drag).
 4. **Arms out of the body** (`--contact`, off by default): the contact
-   pass `animate` runs (`docs/contact.md`). Off because on the game's
-   clips it jitters and turns wrists past their limits (`docs/log.md`).
+   pass `animate` runs ([contact.md](contact.md)). Off because on the
+   reference clips it jitters and turns wrists past their limits
+   ([archive/log.md](archive/log.md)).
 
 Twist helpers are re-driven from their drivers. Clips are resampled at
 30 fps (as `motion check` and the stylizer sample them).
@@ -41,7 +42,7 @@ Twist helpers are re-driven from their drivers. Clips are resampled at
   in the air;
 - a foot slid 8 cm through a plant: locked, the plant's slide after is 0.
 
-## The game's clips (2026-11-13)
+## Reference clip suite (2026-11-13)
 
 | measure (sum over the 31 clips) | base  | clean |
 | ------------------------------- | ----- | ----- |
@@ -51,7 +52,7 @@ Twist helpers are re-driven from their drivers. Clips are resampled at
 | back-and-forth mm               | 37.9  | 39.7  |
 | joint-limit frames              | 243   | 245   |
 
-The seven `sf_*` clips come up 98-103 cm (they stood in the floor to the
-waist), the enemy and Quirin takes down 7-25 cm (they hovered). 26 s for
-the 31 clips on the Mac mini (z), most of it sampling. Iterations and
-what was dropped: `docs/log.md`.
+The seven generated locomotion/attack clips come up 98-103 cm (they stood in the
+floor to the waist), while adversary and companion takes drop 7-25 cm (they
+hovered). 26 s for the 31 clips on an Apple Silicon workstation, most of it
+sampling. Iterations and what was dropped: [archive/log.md](archive/log.md).

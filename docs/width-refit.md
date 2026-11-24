@@ -1,10 +1,10 @@
 # Refitting clips to a body's width (motion-13)
 
 Implemented 2026-11-19 (`8413c42`: `rust/core/src/width_refit.rs` + extended
-`rust/core/src/contact.rs`, wired into `animate` as `--refit-width`, default
-on; clean-checkout fleet audits `fphwu3tj` on Mac and `st2ake8d` on Linux; CI
-run `44659217781` green). Work list item `motion-13`: arms clear the torso,
-hands never enter the body, arms don't pass through each other on a wide chest.
+`rust/core/src/contact/`, wired into `animate` as `--refit-width`, default
+on; clean-checkout audits on macOS and Linux). Work list item `motion-13`:
+arms clear the torso, hands never enter the body, arms don't pass through
+each other on a wide chest.
 
 Measured on real game rigs with `weights check --motion` (fleet job `8rygzvnw`,
 9 core clips) and `motionforge motion check --camera game --blade-pose socket`:
@@ -42,11 +42,9 @@ arm IK, a max-envelope ramp and an exact winding-number check. Two gaps:
    arms and the shins are not proxies (`contact.md`, "Limits"), so arms
    through each other (death 0.80) and a hand into a leg below the thigh
    capsule (dodge 0.20) are never seen.
-2. HLH doesn't play `animate`'s output. The game retargets the library's
-   clips onto each body when it appears (`hlh/bevy/src/clip_retarget.rs`),
-   so no contact pass ever runs on the hero's clips. `motion-5` (today's
-   clips into HLH) bakes clips into his body's GLB; the refit rides on
-   that: a clip baked by `animate` is played as baked.
+2. A downstream engine that retargets clips directly from a shared library
+   onto each body (`clip_retarget.rs`) skips `animate`'s contact pass; baking
+   clips with `animate` lets every character play pre-refit, clean-up clips.
 
 ## The step
 

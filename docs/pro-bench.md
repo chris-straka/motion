@@ -99,8 +99,7 @@ the same reason (sink clips 18 -> 24). Plant rules tried on the tracks
 the path; a moving foot counted as planted only within 1-2 cm of the
 floor) changed the skate count by at most one clip.
 
-What the pictures (`bench/pro/f/pics1/`, painted strips on f) show of
-what is left:
+What the pictures (rendered calibration strips) show of what is left:
 
 - **Skate is real in the pros.** The walk's toe slides 4-5 cm forward on
   the floor at toe-off (frames 21-22: the ball joint at floor height moves
@@ -132,7 +131,7 @@ numbers, frame by frame.
 
 ## First run: every UAL clip onto the hero rig and the female mannequin (2026-11-13)
 
-On f through fleet (`pro_fleet.sh`), 2 h 41 min on a loaded machine,
+On a Linux workstation via `pro_fleet.sh`, 2 h 41 min on a loaded machine,
 nearly all of it the exact through-body check on the hero's mesh. Commit
 445df22 (before the two fixes below; checks then: keys instead of timing,
 no pose check). Clips passing every check, of 84 (stylize: 5 attack
@@ -292,5 +291,5 @@ What the held-out Mixamo run adds:
   skate by `motion check`; the bench scores against them instead.
 - The whole-clip floor offset in `clean` on a clip with few grounded
   frames (Sword_Regular_B).
-- MPFB2 bodies as targets (the weightforge corpus was not built on f).
-- Pictures of the pros' flags: `bench/pro/f/pics1/` (not tracked).
+- MPFB2 bodies as targets (when the meshweights corpus is not present locally).
+- Calibration strips remain un-tracked under the local benchmark directory.

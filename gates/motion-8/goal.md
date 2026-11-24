@@ -1,12 +1,12 @@
 # Goal: motion-8 — Pro bench held-out set, dev/held-out reporting, planted bad clip check, and no machine pin
 
-UAL1+UAL2 are both the clip source and the pro benchmark. Extend `tools/bench/pro_bench.py` and `tools/bench/pro_fleet.sh` so the pro bench supports a held-out clip set (Mixamo clips), reports dev and held-out sets separately, verifies a planted bad clip fails, and never pins a fleet machine (`--on f`).
+UAL1+UAL2 are both the clip source and the pro benchmark. Extend `tools/bench/pro_bench.py` and `tools/bench/pro_fleet.sh` so the pro bench supports a held-out clip set (Mixamo clips), reports dev and held-out sets separately, verifies a planted bad clip fails, and never pins a fleet machine (`--on <machine>`).
 
 ## Scope
 
 - Edit ONLY `tools/bench/pro_bench.py` and `tools/bench/pro_fleet.sh`.
 - Do NOT edit `rust/`, `tools/tests/`, `gates/motion-8/`, `docs/`, or any other file.
-- Pure Python stdlib only (no external packages). Never hardcode owner paths, character names, or fleet machine names (`--on f`, etc.).
+- Pure Python stdlib only (no external packages). Never hardcode user paths, character names, or fleet machine names (`--on ...`).
 
 ## Design
 
@@ -24,7 +24,7 @@ UAL1+UAL2 are both the clip source and the pro benchmark. Extend `tools/bench/pr
      - Return `{"ok": bool, "failed_checks": [...], "control_failed_checks": [...], ...}` and exit 0 from `pro_bench.py planted` ONLY when the planted bad clip fails AND the clean control passes (exit 1 otherwise).
 
 3. **No machine pin in `tools/bench/pro_fleet.sh`**:
-   - Remove `--on f` and machine-specific comments from `tools/bench/pro_fleet.sh` (use capability flags like `--data motion-mixamo-heldout --cores 6`).
+   - Remove machine-pin flags and machine-specific comments from `tools/bench/pro_fleet.sh` (use capability flags like `--data motion-mixamo-heldout --cores 6`).
    - Automatically include held-out `mixamo` in `pro_bench.py run` when `$FLEET_DATA_MOTION_MIXAMO_HELDOUT/mixamo_heldout.glb` or `$FORGE_BENCH/clips/mixamo/mixamo_heldout.glb` is present, and run `pro_bench.py planted` as part of the fleet run.
 
 ## Evidence of Done

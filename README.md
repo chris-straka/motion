@@ -4,10 +4,11 @@ Folder and GitHub repo `motion` (`chris-straka/motion`), CLI command and
 Blender extension `motionforge`.
 
 Game-animation sidekick for Bevy/Rust games: retarget assist, motion stylizer,
-physics pass, ML AutoPose, and the GLB rig adapters assetgen's character chain
-runs (standardize, animate, pose-test; `docs/adapters.md`). One person, one
-panel, no mocap cleanup marathons. Plan and gates: `PLAN.md`; measured numbers:
-`docs/measurements.md`.
+physics pass, ML AutoPose, and standalone GLB rig adapters (`standardize`,
+`animate`, `pose-test`; [docs/adapters.md](docs/adapters.md)). One person, one
+panel, no mocap cleanup marathons. Plan and gates: [PLAN.md](PLAN.md); docs
+index: [docs/README.md](docs/README.md); measured numbers:
+[docs/measurements.md](docs/measurements.md).
 
 ## Layout
 
@@ -79,7 +80,7 @@ Reports go to stdout (deterministic, golden-pinned); files only to
 ## Checks
 
 ```bash
-cd rust && cargo fmt --all --check && cargo test --locked --release
+cd rust && cargo fmt --all --check && cargo clippy --all-targets -- -D warnings && cargo test --locked --release
 python3 -m unittest discover -s blender/tests -p "test_pure.py"
 python3 -m unittest discover -s python/tests -p "test_*.py"
 python3 -m unittest discover -s tools/tests -p "test_*.py"

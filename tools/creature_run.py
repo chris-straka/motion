@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """`tools/creature.sh NAME MODEL OUT`'s driver (stdlib only): one Tripo
-creature through the route and every gate of `~/Games/MONSTERS.md`.
+creature through the route and every monster gate.
 
     python3 tools/creature_run.py NAME MODEL OUT
 
@@ -16,7 +16,7 @@ go into the game repo, so gate 9 is not run for them, and the run says so.
    at the top (`repo_tests`): a tool's own failing test decides no
    creature's pass.
 2-5. `tools/creature_gates.py check` on OUT/NAME.glb.
-6. films at HLH's follow camera (`tools/creature_film.py`) and a fresh
+6. films at the game follow camera (`tools/creature_film.py`) and a fresh
    judge (`claude -p`, reading the pack folder only) that must call the
    can't-tell control can't-tell, catch the planted swapped limbs, and name
    no torn mesh, limb through the body or sliding foot on this creature,
@@ -26,8 +26,8 @@ go into the game repo, so gate 9 is not run for them, and the run says so.
 8. the committed planted fixtures (`creature_gates.py selftest`) and the
    same four plantings made from this creature's own result each make the
    check exit non-zero, naming the right check.
-9. charkit's game step (`tools/line/creature_game.sh`) puts it on HLH's
-   branch `character-line` and films it in the game.
+9. charkit's game step (`tools/line/creature_game.sh`) puts it on a staging
+   game branch and films it in the game.
 
 OUT gets `gates.json` (each gate: pass, the commands, exit codes,
 numbers), `NAME.glb`, the films and the judge's pack. Exit 0 only when
