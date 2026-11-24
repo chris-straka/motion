@@ -491,7 +491,10 @@ pub fn retarget_with(
     // `Socket_Hand_*` sets the target's socket rotation (`sync_sockets`).
     let mut sockets_synced = Vec::new();
     for &(si, _, _) in &jobs {
-        let done = sync_sockets(&mut out, &tgt, &mapped[si], transfers[si].as_ref().unwrap());
+        let Some(transfer) = transfers[si].as_ref() else {
+            continue;
+        };
+        let done = sync_sockets(&mut out, &tgt, &mapped[si], transfer);
         if !done.is_empty() {
             sockets_synced = done;
             break;
@@ -521,7 +524,9 @@ pub fn retarget_with(
     for (si, ai, base) in &jobs {
         let label = &sources[*si].0;
         let src = &mapped[*si];
-        let transfer = transfers[*si].as_ref().unwrap();
+        let Some(transfer) = transfers[*si].as_ref() else {
+            return Err("animate: missing joint transfer".into());
+        };
         let anim = &anims[*si][*ai];
         {
             let frames = ((anim.duration * fps).round() as usize).max(1) + 1;
@@ -581,7 +586,7 @@ pub fn retarget_with(
                     );
                 }
             }
-            // Contact pass on the character's own body (`contact.rs`).
+            // Contact pass on the character's own body (`contact/`).
             let contact_report = match (&body, contact) {
                 (Some(b), Some(o)) => {
                     let src_ctx = src_bodies[*si]
@@ -602,7 +607,10 @@ pub fn retarget_with(
             let hips = tgt.map.node_of("DEF-spine");
             let root_travel = hips
                 .and_then(|h| transfer.shared.iter().position(|(t, _)| *t == h))
-                .map(|k| (tracks[k].last().unwrap().t - tracks[k][0].t).length())
+                .and_then(|k| match (tracks[k].first(), tracks[k].last()) {
+                    (Some(a), Some(b)) => Some((b.t - a.t).length()),
+                    _ => None,
+                })
                 .unwrap_or(0.0);
             write_animation(&mut out, &name, &times, &nodes, &tracks, hips)?;
             reports.push(ClipReport {

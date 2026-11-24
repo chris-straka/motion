@@ -39,12 +39,12 @@ else
   pass "zero partial_cmp in unguarded Rust sources"
 fi
 
-echo "== 4. No DEF-forearm_twist special case in rust/core/src/contact.rs"
-if grep -En 'DEF-forearm_twist' rust/core/src/contact.rs > "$T/ft.out" 2>&1; then
-  fail "DEF-forearm_twist special case still present in rust/core/src/contact.rs"
+echo "== 4. No DEF-forearm_twist special case in rust/core/src/contact/"
+if grep -rnE 'DEF-forearm_twist' rust/core/src/contact > "$T/ft.out" 2>&1; then
+  fail "DEF-forearm_twist special case still present in rust/core/src/contact/"
   show 10 < "$T/ft.out"
 else
-  pass "contact.rs routes forearm_twist through helpers table"
+  pass "contact/ routes forearm_twist through helpers table"
 fi
 
 echo "== 5. helpers.rs caches rig mapping (at most 1 humanoid::map_rig call site, and reusable per-rig driver)"
