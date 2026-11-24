@@ -346,6 +346,20 @@ fov_y_deg, width, height`; pixel origin top-left of each view).
   single canonical home for the CanItCode 2-camera DINOv2 tracker and
   triangulation solver. Downstream benchmarks (including
   `skintokens/tools/bench/exam.sh`) invoke `python/creature/exam.py` directly.
+- `detect.py` splits composite videos with `--layout side-by-side` (default) or
+  `--layout top-bottom`, reads `--frames DIR` (`render.py --mode motion` PNGs),
+  records `ffprobe` frame `times`, and scales outputs into each view's
+  `creature["views"]` dimensions for `motionforge creature-solve`.
+- `exam.py` locates `motionforge` via `--motionforge`, `$MOTIONFORGE_BIN`,
+  `PATH`, or Cargo `release`/`debug` targets, and supports `--align-views` and
+  `--align-time off|lag|warp|auto` passthrough flags for alignment runs.
+- `render.py` configures render resolution per camera view, binds Blender 5.3
+  Slotted Actions (`anim_utils.action_ensure_channelbag_for_slot`), and guards
+  material/world node tree setup against Blender 6.0 `.use_nodes` deprecations.
+- `python/tests/test_creature_tracker.py` tests `finder` heatmap math,
+  `detect.split_views` layouts, `exam` binary/regression gating, and
+  two-camera correspondence rejection + `--align-views --align-time auto`
+  recovery against `tests/fixtures/creature/fixture_biped.json`.
 - Skeleton generation and CanItCode outside-body / digit-fold pruning are
   consolidated behind `skintokens/bin/autorig`; `tools/creature_rig.py` and
   `tools/tripo_rig.py` delegate there rather than duplicating multi-seed

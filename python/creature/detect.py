@@ -70,11 +70,22 @@ def video_times(path, count):
     return times
 
 
-def split_views(frame, n_views):
-    """Composite (3, H, W) -> list of (3, H, W/n) halves left to right."""
-    c, h, w = frame.shape
-    step = w // n_views
-    return [frame[:, :, i * step:(i + 1) * step] for i in range(n_views)]
+def split_views(frame, n_views, layout="side-by-side"):
+    """Composite (3, H, W) -> list of (3, h, w) view crops."""
+    if n_views < 1:
+        raise ValueError(f"n_views must be >= 1, got {n_views}")
+    _, h, w = frame.shape
+    if layout == "side-by-side":
+        step = w // n_views
+        if step < 1:
+            raise ValueError(f"frame width {w} too small for {n_views} views")
+        return [frame[:, :, i * step:(i + 1) * step] for i in range(n_views)]
+    if layout == "top-bottom":
+        step = h // n_views
+        if step < 1:
+            raise ValueError(f"frame height {h} too small for {n_views} views")
+        return [frame[:, i * step:(i + 1) * step, :] for i in range(n_views)]
+    raise ValueError(f"unsupported layout {layout!r}; expected side-by-side or top-bottom")
 
 
 def main():
@@ -85,19 +96,28 @@ def main():
     ap.add_argument("--video")
     ap.add_argument("--frames")
     ap.add_argument("--fps", type=float, default=0.0, help="override the video's fps")
+    ap.add_argument("--layout", choices=["side-by-side", "top-bottom"], default="side-by-side",
+                    help="view arrangement in composite --video frames")
     ap.add_argument("--batch", type=int, default=16)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
     if bool(args.video) == bool(args.frames):
         raise SystemExit("give --video or --frames")
+    if args.batch < 1:
+        raise SystemExit("--batch must be >= 1")
     with open(args.creature) as f:
         creature = json.load(f)
-    views = [v["name"] for v in creature["views"]]
+    views = [v["name"] for v in creature.get("views", [])]
+    if not views:
+        raise SystemExit("creature profile has no views")
     view_size = [(v["width"], v["height"]) for v in creature["views"]]
     ckpt = torch.load(args.model, map_location="cpu", weights_only=False)
-    if ckpt["views"] != views:
-        raise SystemExit(f"model views {ckpt['views']} differ from the creature's {views}")
-    model = finder.JointFinder(len(ckpt["joints"]), pretrained=False)
+    if ckpt.get("views") != views:
+        raise SystemExit(f"model views {ckpt.get('views')} differ from the creature's {views}")
+    joints = ckpt.get("joints") or []
+    if not joints:
+        raise SystemExit("checkpoint contains no joints")
+    model = finder.JointFinder(len(joints), pretrained=False)
     model.load_state_dict(ckpt["state_dict"])
     model = model.to(args.device).eval()
 
@@ -110,9 +130,11 @@ def main():
         fps = fps or vfps
         times = video_times(args.video, len(frames))
         for fr in frames:
-            halves = split_views(fr, len(views))
+            halves = split_views(fr, len(views), layout=args.layout)
             per_frame.append([(h_, (h_.shape[2], h_.shape[1])) for h_ in halves])
     else:
+        if not os.path.isdir(args.frames):
+            raise SystemExit(f"frames directory not found: {args.frames}")
         i = 0
         while True:
             paths = [os.path.join(args.frames, f"f{i:05d}_{v}.png") for v in views]
@@ -140,14 +162,17 @@ def main():
                 # Into the view's own pixels (the half may come at another size).
                 su, sv = view_size[vi][0] / finder.INPUT, view_size[vi][1] / finder.INPUT
                 results[(fi, vi)] = [[float(u[n, j]) * su, float(v[n, j]) * sv, float(conf[n, j])] for j in range(u.shape[1])]
-    out = {"format": "motionforge-detections", "version": 1, "fps": fps, "views": views, "joints": ckpt["joints"],
+    out = {"format": "motionforge-detections", "version": 1, "fps": fps, "views": views, "joints": joints,
            "frames": [[results[(fi, vi)] for vi in range(len(views))] for fi in range(len(per_frame))]}
     if times is not None:
         out["times"] = times
+    out_dir = os.path.dirname(os.path.abspath(args.out))
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
     with open(args.out, "w") as f:
         json.dump(out, f)
     confs = [d[2] for fr in out["frames"] for v in fr for d in v]
-    print(f"detections: {len(per_frame)} frames x {len(views)} views x {len(ckpt['joints'])} joints -> {args.out} "
+    print(f"detections: {len(per_frame)} frames x {len(views)} views x {len(joints)} joints -> {args.out} "
           f"(mean confidence {sum(confs) / len(confs):.3f}, fps {fps})")
 
 

@@ -32,12 +32,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 
 
-def find_motionforge(explicit):
+def find_motionforge(explicit=""):
     if explicit:
-        return explicit
-    for p in [shutil.which("motionforge"),
-              os.path.join(REPO, "rust", "target", "release", "motionforge"),
-              os.path.join(os.environ.get("CARGO_TARGET_DIR", ""), "release", "motionforge")]:
+        resolved = shutil.which(explicit) if os.sep not in explicit else explicit
+        if resolved and os.path.exists(resolved):
+            return resolved
+        raise SystemExit(f"motionforge binary not found: {explicit}")
+    cargo_target = os.environ.get("CARGO_TARGET_DIR", "")
+    candidates = [
+        os.environ.get("MOTIONFORGE_BIN", ""),
+        shutil.which("motionforge") or "",
+        os.path.join(REPO, "rust", "target", "release", "motionforge"),
+        os.path.join(REPO, "rust", "target", "debug", "motionforge"),
+    ]
+    if cargo_target:
+        candidates.extend([
+            os.path.join(cargo_target, "release", "motionforge"),
+            os.path.join(cargo_target, "debug", "motionforge"),
+        ])
+    for p in candidates:
         if p and os.path.exists(p):
             return p
     raise SystemExit("motionforge binary not found; build it or pass --motionforge")
@@ -54,7 +67,7 @@ def run(cmd, log=None):
     return r.stdout
 
 
-def exam_one(name, cdir, out, seed, frames, mf, blender, python, video, log):
+def exam_one(name, cdir, out, seed, frames, mf, blender, python, video, log, align_views=False, align_time=None):
     os.makedirs(out, exist_ok=True)
     creature = os.path.join(cdir, "creature.json")
     glb = os.path.join(cdir, "clean.glb")
@@ -71,9 +84,14 @@ def exam_one(name, cdir, out, seed, frames, mf, blender, python, video, log):
     run([python, os.path.join(HERE, "detect.py"), "--model", model, "--creature", creature, "--frames", film, "--out", det], log)
     solved = os.path.join(out, "solved.json")
     solve_report = os.path.join(out, "solve.json")
-    run([mf, "creature-solve", "--creature", creature, "--detections", det, "--output", solved,
-         "--glb-in", glb, "--glb-out", os.path.join(out, "solved.glb"), "--clip-name", f"exam_{seed}",
-         "--report", solve_report], log)
+    solve_cmd = [mf, "creature-solve", "--creature", creature, "--detections", det, "--output", solved,
+                 "--glb-in", glb, "--glb-out", os.path.join(out, "solved.glb"), "--clip-name", f"exam_{seed}",
+                 "--report", solve_report]
+    if align_views:
+        solve_cmd.append("--align-views")
+    if align_time:
+        solve_cmd.extend(["--align-time", align_time])
+    run(solve_cmd, log)
     scores_path = os.path.join(out, "scores.json")
     run([mf, "creature-compare", "--creature", creature, "--truth", truth, "--solved", solved, "--output", scores_path], log)
     with open(scores_path) as f:
@@ -129,6 +147,9 @@ def main():
     ap.add_argument("--check", help="baseline JSON to compare against (fails on regression)")
     ap.add_argument("--update", help="write the new scores as this baseline")
     ap.add_argument("--video", action="store_true")
+    ap.add_argument("--align-views", action="store_true", help="pass --align-views to creature-solve")
+    ap.add_argument("--align-time", choices=["off", "lag", "warp", "auto"], default=None,
+                    help="pass --align-time MODE to creature-solve")
     ap.add_argument("--blender", default=os.environ.get("BLENDER", "blender"))
     ap.add_argument("--motionforge", default="")
     ap.add_argument("--python", default=sys.executable)
@@ -141,12 +162,15 @@ def main():
     log = []
     t0 = time.time()
     for spec in args.creature:
+        if "=" not in spec:
+            raise SystemExit(f"expected --creature NAME=DIR, got {spec!r}")
         name, cdir = spec.split("=", 1)
         per_seed = {}
         for seed in seeds:
             out = os.path.join(args.out, name, f"seed{seed}")
             print(f"[{name} seed {seed}] ...", flush=True)
-            s = exam_one(name, cdir, out, seed, args.frames, mf, args.blender, args.python, args.video, log)
+            s = exam_one(name, cdir, out, seed, args.frames, mf, args.blender, args.python, args.video, log,
+                         align_views=args.align_views, align_time=args.align_time)
             per_seed[str(seed)] = s
             print(f"[{name} seed {seed}] mean {s['mean_mm']:.1f} mm, inner bones {s['mean_deg_inner']:.2f} deg, "
                   f"max {s['max_mm']:.0f} mm, foot slide {s['foot_slide_mm']:.1f} mm, "
