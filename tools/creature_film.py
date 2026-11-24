@@ -29,6 +29,7 @@ import subprocess
 import sys
 
 import bpy
+from bpy_extras import anim_utils
 from mathutils import Matrix, Vector
 
 FOV_DEG = 75.0
@@ -62,10 +63,22 @@ def bind(arms, act):
         for tr in list(ad.nla_tracks):
             ad.nla_tracks.remove(tr)
         ad.action = act
-        if act is not None and hasattr(ad, "action_suitable_slots") and len(ad.action_suitable_slots):
-            slots = list(ad.action_suitable_slots)
-            pick = next((s for s in slots if getattr(s, "name_display", "") in (arm.name, arm.data.name)), None)
-            ad.action_slot = pick if pick is not None else slots[0]
+        if act is not None and hasattr(ad, "action_slot"):
+            slots = list(getattr(ad, "action_suitable_slots", None) or getattr(act, "slots", None) or ())
+            if slots:
+                names = (arm.name, arm.data.name if arm.data else "", "hero")
+                pose_slots = [
+                    s for s in slots
+                    if (cb := anim_utils.action_get_channelbag_for_slot(act, s)) is not None
+                    and any(getattr(fc, "data_path", "").startswith("pose.bones")
+                            for fc in getattr(cb, "fcurves", None) or ())
+                ]
+                pick = next((s for s in pose_slots if getattr(s, "name_display", "") in names), None)
+                if pick is None and pose_slots:
+                    pick = pose_slots[0]
+                if pick is None:
+                    pick = next((s for s in slots if getattr(s, "name_display", "") in names), None)
+                ad.action_slot = pick if pick is not None else slots[0]
 
 
 def opaque_paint():
@@ -74,7 +87,7 @@ def opaque_paint():
     nothing but a shadow; a painted texture shows as it is."""
     for m in bpy.data.materials:
         rgb = list(m.diffuse_color[:3])
-        if m.use_nodes and m.node_tree:
+        if getattr(m, "node_tree", None):
             for n in m.node_tree.nodes:
                 if n.type == "BSDF_PRINCIPLED":
                     if "Alpha" in n.inputs:

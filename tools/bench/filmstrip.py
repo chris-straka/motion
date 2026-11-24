@@ -14,6 +14,7 @@ import math
 import sys
 
 import bpy
+from bpy_extras import anim_utils
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 OUT, CLIP = argv[0], argv[1]
@@ -55,6 +56,23 @@ def setup(height, cx, cy):
     grid.data.materials.append(mat)
 
 
+def _pick_armature_slot(arm, act):
+    slots = list(getattr(act, "slots", None) or ())
+    if not slots:
+        return None
+    for s in slots:
+        cb = anim_utils.action_get_channelbag_for_slot(act, s)
+        if cb is not None and any(
+            getattr(fc, "data_path", "").startswith("pose.bones")
+            for fc in getattr(cb, "fcurves", None) or ()
+        ):
+            return s
+    for s in slots:
+        if getattr(s, "name_display", "") in (arm.name, arm.data.name if arm.data else "", "hero"):
+            return s
+    return slots[0]
+
+
 def render_row(r, path):
     clear()
     bpy.ops.import_scene.gltf(filepath=path)
@@ -65,6 +83,9 @@ def render_row(r, path):
         raise SystemExit(f"no clip {CLIP} in {path}")
     arm.animation_data_create()
     arm.animation_data.action = act
+    slot = _pick_armature_slot(arm, act)
+    if slot is not None and hasattr(arm.animation_data, "action_slot"):
+        arm.animation_data.action_slot = slot
     f0, f1 = act.frame_range
     body = bpy.data.materials.new("body")
     body.diffuse_color = (0.25, 0.3, 0.45, 1)

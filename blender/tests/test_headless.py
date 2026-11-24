@@ -13,13 +13,14 @@ import shutil
 import sys
 
 import bpy
+from bpy_extras import anim_utils
 from mathutils import Matrix
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "blender"))
 
-from motionforge import cli, clip_io  # noqa: E402
+from motionforge import cli, clip_io, slotted  # noqa: E402
 
 
 def check(condition, message):
@@ -78,6 +79,10 @@ def key_action(arm, action_name, n_frames, pose_fn):
     action = bpy.data.actions.new(action_name)
     arm.animation_data_create()
     arm.animation_data.action = action
+    if hasattr(action, "slots") and hasattr(arm.animation_data, "action_slot"):
+        slot = action.slots.new(id_type="OBJECT", name=arm.name)
+        arm.animation_data.action_slot = slot
+        anim_utils.action_ensure_channelbag_for_slot(action, slot)
     scene = bpy.context.scene
     scene.frame_start, scene.frame_end = 1, n_frames
     for i in range(1, n_frames + 1):
@@ -122,15 +127,25 @@ def clips_close(a, b, eps=2e-6):
     return True
 
 
-def all_fcurves(action):
-    """Every fcurve in an action, layered (Blender 5.x) or legacy."""
+def all_fcurves(action, slot=None):
+    """Every fcurve in an action (or slot), layered (Blender 5.x) or legacy."""
     if hasattr(action, "fcurves"):
-        return list(action.fcurves)
+        return list(action.fcurves) if slot is None else []
+    layers = list(getattr(action, "layers", ()) or ())
+    if len(layers) <= 1 and hasattr(action, "slots"):
+        slots = [slot] if slot is not None else list(action.slots)
+        out = []
+        for s in slots:
+            bag = anim_utils.action_get_channelbag_for_slot(action, s)
+            if bag is not None:
+                out.extend(bag.fcurves)
+        return out
     out = []
-    for layer in action.layers:
+    for layer in layers:
         for strip in layer.strips:
             for bag in getattr(strip, "channelbags", ()):
-                out.extend(bag.fcurves)
+                if slot is None or getattr(bag, "slot", None) == slot:
+                    out.extend(bag.fcurves)
     return out
 
 
@@ -177,6 +192,81 @@ def main():
         skel = clip_io.export_skeleton(prefixed, strip_prefix=True)
         check([b["name"] for b in skel["bones"]] == ["Hips", "Spine"], "prefix stripped")
         check(skel["bones"][1]["parent"] == "Hips", "stripped parent relinked")
+        colliding = make_armature("Colliding", [
+            ("Root", (0, 0, 1), (0, 0, 2), None),
+            ("mixamorig:Root", (0, 0, 2), (0, 0, 3), "Root"),
+        ])
+        try:
+            clip_io.export_skeleton(colliding, strip_prefix=True)
+            check(False, "prefix strip collision refused")
+        except clip_io.MotionforgeError as exc:
+            check("Root" in str(exc), f"prefix strip collision named ({exc})")
+
+        # --- Blender 5.3 Slotted Actions direct clip_io + anim_utils -----
+        bpy.ops.object.empty_add(type="PLAIN_AXES")
+        wpn = bpy.context.view_layer.objects.active
+        wpn.name = "SwordProp"
+        multi = bpy.data.actions.new("MultiSlotDirect")
+        if hasattr(multi, "slots"):
+            check(not hasattr(multi, "fcurves"), "Blender 5.x action uses channelbags rather than action.fcurves")
+            s_wpn = multi.slots.new(id_type="OBJECT", name="weapon")
+            wpn.animation_data_create()
+            wpn.animation_data.action = multi
+            wpn.animation_data.action_slot = s_wpn
+            bag_wpn = anim_utils.action_ensure_channelbag_for_slot(multi, s_wpn)
+            for f in (1, 4, 8):
+                wpn.location = (0.0, float(f), 1.0)
+                wpn.keyframe_insert("location", frame=f)
+            wpn_before = {
+                (fc.data_path, fc.array_index): [(round(kp.co.x, 4), round(kp.co.y, 4)) for kp in fc.keyframe_points]
+                for fc in anim_utils.action_get_channelbag_for_slot(multi, s_wpn).fcurves
+            }
+            clip_io.import_clip(arm, exported, "MultiSlotDirect", 1, action=multi, slot_name="hero")
+            s_hero = slotted.find_slot(multi, "hero")
+            check([s.name_display for s in multi.slots] == ["weapon", "hero"],
+                  "explicit multi-slot import keeps weapon + hero unsuffixed")
+            check(arm.animation_data.action_slot == s_hero, "armature bound to explicit hero slot")
+            check(wpn.animation_data.action_slot == s_wpn, "weapon object bound to weapon slot")
+            hero_bag = anim_utils.action_get_channelbag_for_slot(multi, s_hero)
+            wpn_bag = anim_utils.action_get_channelbag_for_slot(multi, s_wpn)
+            check(hero_bag is not None and any(fc.data_path.startswith("pose.bones") for fc in hero_bag.fcurves),
+                  "hero channelbag carries pose.bones fcurves")
+            check(all(kp.interpolation == "LINEAR" for fc in hero_bag.fcurves for kp in fc.keyframe_points),
+                  "hero channelbag fcurves interpolated LINEAR")
+            wpn_after = {
+                (fc.data_path, fc.array_index): [(round(kp.co.x, 4), round(kp.co.y, 4)) for kp in fc.keyframe_points]
+                for fc in wpn_bag.fcurves
+            } if wpn_bag is not None else {}
+            check(wpn_bag == bag_wpn and wpn_before == wpn_after and any(k[0] == "location" for k in wpn_after),
+                  "weapon channelbag location fcurves preserved untouched")
+            reexported_multi = clip_io.export_action(arm, multi, 1, 8)
+            check(clips_close(exported, reexported_multi),
+                  "multi-slot export_action resolves hero slot over slots[0] weapon")
+
+            # Reusing a weapon-only action without slot_name= must not clobber weapon slot.
+            wpn_only = bpy.data.actions.new("WeaponOnlyDirect")
+            s_wo = wpn_only.slots.new(id_type="OBJECT", name="weapon")
+            wpn.animation_data.action = wpn_only
+            wpn.animation_data.action_slot = s_wo
+            anim_utils.action_ensure_channelbag_for_slot(wpn_only, s_wo)
+            wpn.location = (2.0, 0.0, 0.0)
+            wpn.keyframe_insert("location", frame=1)
+            clip_io.import_clip(arm, exported, "WeaponOnlyDirect", 1, action=wpn_only)
+            check(len(wpn_only.slots) == 2 and wpn_only.slots[0] == s_wo,
+                  "slot_name=None import on weapon-only action adds distinct armature slot")
+            check(any(fc.data_path == "location" for fc in anim_utils.action_get_channelbag_for_slot(wpn_only, s_wo).fcurves),
+                  "weapon slot preserved when arm imports without explicit slot_name")
+
+            # AutoPose pose-frame apply creates explicit slot + channelbag on empty action.
+            pose_act = bpy.data.actions.new("AutoPoseSlot")
+            arm.animation_data.action = pose_act
+            arm.animation_data.action_slot = None
+            one_frame = dict(exported, frames=[exported["frames"][0]])
+            bpy.context.scene.frame_set(1)
+            clip_io.apply_pose_frame(arm, one_frame, key=True)
+            check(arm.animation_data.action_slot is not None, "apply_pose_frame assigned explicit action_slot")
+            check(anim_utils.action_get_channelbag_for_slot(pose_act, arm.animation_data.action_slot) is not None,
+                  "apply_pose_frame ensured channelbag for assigned slot")
 
         # --- refusals ----------------------------------------------------
         rolled = make_armature("Rolled", CHAIN)

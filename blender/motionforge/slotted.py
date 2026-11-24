@@ -13,6 +13,7 @@ import os
 import sys
 
 import bpy
+from bpy_extras import anim_utils
 
 if __package__:
     from . import clip_io, slot_contract
@@ -87,21 +88,10 @@ def ensure_channelbag(action, slot):
     """Ensure `action` has a layer/keyframe strip/channelbag for `slot`."""
     if not hasattr(action, "layers"):
         return None
-    layer = action.layers[0] if len(action.layers) else action.layers.new("Layer")
-    strip = None
-    for st in layer.strips:
-        if getattr(st, "type", "KEYFRAME") == "KEYFRAME":
-            strip = st
-            break
-    if strip is None:
-        strip = layer.strips.new(type="KEYFRAME")
-    slot_handle = getattr(slot, "handle", None)
-    for bag in getattr(strip, "channelbags", ()):
-        if getattr(bag, "slot", None) == slot or (
-            slot_handle is not None and getattr(bag, "slot_handle", None) == slot_handle
-        ):
-            return bag
-    return strip.channelbags.new(slot)
+    bag = anim_utils.action_get_channelbag_for_slot(action, slot)
+    if bag is not None:
+        return bag
+    return anim_utils.action_ensure_channelbag_for_slot(action, slot)
 
 
 def resolve_object_slot(obj, action, preferred_name=None):

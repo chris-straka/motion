@@ -30,6 +30,7 @@ import math
 import sys
 
 import bpy
+from bpy_extras import anim_utils
 from mathutils import Vector
 
 with open(sys.argv[sys.argv.index("--") + 1:][0]) as _fh:
@@ -52,7 +53,8 @@ def mat(name, rgba):
     # Under TEXTURE shading an untextured material shows its node colour:
     # a 1x1 image of the colour makes the floor and labels read the same
     # painted or not.
-    m.use_nodes = True
+    if getattr(m, "node_tree", None) is None:
+        m.use_nodes = True
     nt = m.node_tree
     img = bpy.data.images.get("px_" + name) or bpy.data.images.new("px_" + name, 1, 1)
     img.pixels = list(rgba)
@@ -64,6 +66,23 @@ def mat(name, rgba):
         nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
     nt.nodes.active = tex
     return m
+
+
+def _pick_armature_slot(arm, act):
+    slots = list(getattr(act, "slots", None) or ())
+    if not slots:
+        return None
+    for s in slots:
+        cb = anim_utils.action_get_channelbag_for_slot(act, s)
+        if cb is not None and any(
+            getattr(fc, "data_path", "").startswith("pose.bones")
+            for fc in getattr(cb, "fcurves", None) or ()
+        ):
+            return s
+    for s in slots:
+        if getattr(s, "name_display", "") in (arm.name, arm.data.name if arm.data else "", "hero"):
+            return s
+    return slots[0]
 
 
 def load(row):
@@ -84,8 +103,9 @@ def load(row):
         raise SystemExit(f"no clip {row['clip']} in {row['glb']}: {[a.name for a in bpy.data.actions]}")
     arm.animation_data_create()
     arm.animation_data.action = act
-    if hasattr(arm.animation_data, "action_slot") and act.slots:
-        arm.animation_data.action_slot = act.slots[0]
+    slot = _pick_armature_slot(arm, act)
+    if slot is not None and hasattr(arm.animation_data, "action_slot"):
+        arm.animation_data.action_slot = slot
     if not SPEC.get("paint", True):
         for o in meshes:
             o.data.materials.clear()

@@ -30,7 +30,7 @@ Full doc map: [docs/README.md](docs/README.md).
 
 ## Architecture
 
-- Blender extension (GPL-3.0-or-later) for the UI and Blender I/O.
+- Blender extension (GPL-3.0-or-later) for the UI and Blender I/O, using Blender 4.4+/5.3 Slotted Actions (`action.slots`, `anim_utils.action_get_channelbag_for_slot`, `channelbag.fcurves`, and canonical `hero`/`weapon`/`shield`/`helper` multi-slot GLB round-trips in `blender/motionforge/slotted.py` and `clip_io.py`).
 - Core math + model inference in a Rust CLI or library (MIT), communicating via
   subprocess over JSON/GLB files for determinism.
 - Training in Python (PyTorch, local on an Apple M4, 16 GB). Exported
@@ -93,13 +93,18 @@ Spec, formats, limits and numbers: `docs/creature.md` and
   two-view consistency check + triangulation + solve with limits,
   smoothing and planted feet, bone-by-bone scoring, and the rig GLB
   with the animation. Byte-deterministic, goldens pinned.
-- `python/creature/`: Blender renderer (training poses with motion
-  blur and random light; the exam film; the video model's start
-  frame), a per-creature DINOv2-small joint finder (Apache-2.0, trained
-  on an 8 GB GPU), the detector, and the exam driver.
+- `python/creature/`: Blender renderer (`render.py`: training poses with motion
+  blur and random light, the exam film, the video model's start frame; per-view
+  resolution and Blender 5.3 Slotted Actions compatible), a per-creature
+  DINOv2-small joint finder (`finder.py`, `train.py`, Apache-2.0, trained on an
+  8 GB GPU), the composite/frames detector (`detect.py`, `--layout side-by-side|top-bottom`),
+  and the exam driver (`exam.py`, `$MOTIONFORGE_BIN` lookup and optional
+  `--align-views` / `--align-time`).
 - Gate: `python/creature/exam.py --check tests/fixtures/creature/exam_baseline.json`
   for every change; a change that makes any creature's exam worse is
-  out. `cargo test` holds the deterministic half.
+  out. `cargo test` holds the deterministic half and
+  `python/tests/test_creature_tracker.py` verifies tracker layout, binary
+  resolution, and two-camera correspondence/alignment end-to-end.
 - Video source: pluggable. Paid models (Seedance, Kling, MiniMax) wait
   for the release batch; the free open-weights try (Wan 2.2 TI2V-5B,
   Apache-2.0) is recorded in the measurements with its verdict.

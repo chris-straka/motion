@@ -32,6 +32,7 @@ import sys
 import tempfile
 
 import bpy
+from bpy_extras import anim_utils
 import numpy as np
 from mathutils import Matrix, Vector
 
@@ -132,7 +133,8 @@ def setup(tw, th):
     except AttributeError:
         pass
     world = bpy.data.worlds.new("sheet")
-    world.use_nodes = True
+    if getattr(world, "node_tree", None) is None:
+        world.use_nodes = True
     world.node_tree.nodes["Background"].inputs["Color"].default_value = (
         0.17,
         0.18,
@@ -157,7 +159,8 @@ def setup(tw, th):
     label_data.align_x = "CENTER"
     label = bpy.data.objects.new("label", label_data)
     mat = bpy.data.materials.new("label")
-    mat.use_nodes = True
+    if getattr(mat, "node_tree", None) is None:
+        mat.use_nodes = True
     bsdf = mat.node_tree.nodes.get("Principled BSDF")
     if bsdf is not None and "Emission Color" in bsdf.inputs:
         bsdf.inputs["Emission Color"].default_value = (1, 1, 1, 1)
@@ -171,14 +174,13 @@ def _pick_armature_slot(arm, act):
     slots = list(getattr(act, "slots", None) or ())
     if not slots:
         return None
-    for layer in getattr(act, "layers", None) or ():
-        for strip in getattr(layer, "strips", None) or ():
-            for cb in getattr(strip, "channelbags", None) or ():
-                if getattr(cb, "slot", None) is not None and any(
-                    getattr(fc, "data_path", "").startswith("pose.bones")
-                    for fc in getattr(cb, "fcurves", None) or ()
-                ):
-                    return cb.slot
+    for s in slots:
+        cb = anim_utils.action_get_channelbag_for_slot(act, s)
+        if cb is not None and any(
+            getattr(fc, "data_path", "").startswith("pose.bones")
+            for fc in getattr(cb, "fcurves", None) or ()
+        ):
+            return s
     for s in slots:
         if getattr(s, "name_display", "") in (arm.name, arm.data.name if arm.data else "", "hero"):
             return s

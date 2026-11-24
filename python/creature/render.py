@@ -32,6 +32,7 @@ import sys
 import time
 
 import bpy
+from bpy_extras import anim_utils
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
@@ -150,7 +151,8 @@ def make_lights(scene, rng, randomize):
     r = 6.0
     add("key", "AREA", (r * math.cos(key_az) * math.cos(key_el), r * math.sin(key_az) * math.cos(key_el), r * math.sin(key_el) + 1.0), key_e, key_col)
     add("fill", "AREA", (-r * math.cos(key_az), -r * math.sin(key_az), 2.5), fill_e, fill_col, size=5.0)
-    scene.world.use_nodes = True
+    if getattr(scene.world, "node_tree", None) is None:
+        scene.world.use_nodes = True
     bg = scene.world.node_tree.nodes.get("Background")
     if bg is not None:
         bg.inputs[0].default_value = (0.5, 0.5, 0.5, 1.0)
@@ -166,7 +168,8 @@ def set_material(arm, rng, randomize):
         mat = bpy.data.materials.get("creature_body")
         if mat is None:
             mat = bpy.data.materials.new("creature_body")
-            mat.use_nodes = True
+            if getattr(mat, "node_tree", None) is None:
+                mat.use_nodes = True
         bsdf = mat.node_tree.nodes.get("Principled BSDF")
         if bsdf is not None:
             if randomize:
@@ -265,6 +268,8 @@ def main():
     if args.limit:
         samples = samples[: args.start + args.limit]
     samples = samples[args.start:]
+    if not samples:
+        raise SystemExit("no samples to render")
 
     def frame_poses(k):
         return [(tuple(frames[k][n]["loc"]), tuple(frames[k][n]["quat"])) for n in names]
@@ -290,6 +295,14 @@ def main():
         """Key clip frames `indices` at scene frames 1..len (a fresh action:
         inserting keys into a long action gets slower with every key)."""
         clear_action()
+        ad = arm.animation_data or arm.animation_data_create()
+        act = bpy.data.actions.new("CreatureRender")
+        ad.action = act
+        if hasattr(act, "slots"):
+            slot = act.slots.new(id_type="OBJECT", name=arm.name)
+            if hasattr(ad, "action_slot"):
+                ad.action_slot = slot
+            anim_utils.action_ensure_channelbag_for_slot(act, slot)
         for n, k in enumerate(indices):
             pose_from_clip(arm, skel, frame_poses(k), matrix_local, name_to_pbone)
             key_pose(arm, n + 1)
@@ -330,8 +343,12 @@ def main():
             scene.frame_set(centre + 1)
         posed = fk_full(skel, frame_poses(centre))
         entry = {"index": s, "clip_frame": centre, "views": {}}
-        for vname, cam in cams.items():
+        for v in creature["views"]:
+            vname = v["name"]
+            cam = cams[vname]
             scene.camera = cam
+            scene.render.resolution_x = v["width"]
+            scene.render.resolution_y = v["height"]
             scene.render.filepath = os.path.join(args.out, f"f{s:05d}_{vname}.png")
             bpy.ops.render.render(write_still=True)
             entry["views"][vname] = [project(scene, cam, posed[i][1]) for i in range(len(names))]

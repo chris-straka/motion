@@ -9,6 +9,7 @@ channel). Both limits are reported with the offending bone names.
 """
 
 import bpy  # noqa: F401  (this module needs Blender)
+from bpy_extras import anim_utils  # noqa: F401
 
 from . import quats, slot_contract
 
@@ -65,7 +66,7 @@ def export_skeleton(arm_obj, strip_prefix=False):
     names = {}
     for bone in bones:
         name = strip_mixamo_prefix(bone.name) if strip_prefix else bone.name
-        if name in names:
+        if name in names.values():
             raise MotionforgeError(f"prefix strip collides on bone name '{name}'")
         names[bone.name] = name
     out = []
@@ -154,7 +155,14 @@ def _iter_slot_fcurves(action):
     if hasattr(action, "fcurves"):
         yield (None, list(action.fcurves))
         return
-    for layer in getattr(action, "layers", ()):
+    layers = list(getattr(action, "layers", ()) or ())
+    if len(layers) == 1 and len(getattr(layers[0], "strips", ()) or ()) == 1 and hasattr(action, "slots"):
+        for s in action.slots:
+            bag = anim_utils.action_get_channelbag_for_slot(action, s)
+            if bag is not None:
+                yield (s, list(bag.fcurves))
+        return
+    for layer in layers:
         for strip in getattr(layer, "strips", ()):
             for bag in getattr(strip, "channelbags", ()):
                 yield (getattr(bag, "slot", None), list(bag.fcurves))
@@ -164,9 +172,13 @@ def _iter_fcurves(action, slot=None):
     """Every fcurve in an action (or a single slot), layered (5.x) or legacy."""
     if hasattr(action, "fcurves"):
         return list(action.fcurves) if slot is None else []
+    layers = list(getattr(action, "layers", ()) or ())
+    if slot is not None and len(layers) <= 1:
+        bag = anim_utils.action_get_channelbag_for_slot(action, slot)
+        return list(bag.fcurves) if bag is not None else []
     target_handle = getattr(slot, "handle", None) if slot is not None else None
     out = []
-    for layer in getattr(action, "layers", ()):
+    for layer in layers:
         for strip in getattr(layer, "strips", ()):
             for bag in getattr(strip, "channelbags", ()):
                 if slot is not None:
@@ -255,6 +267,39 @@ def _bind_named_slot(obj, action, slot_name):
         raise MotionforgeError(f"Blender suffixed slot to '{slot.name_display}' instead of '{slot_name}'")
     if hasattr(obj.animation_data, "action_slot"):
         obj.animation_data.action_slot = slot
+    anim_utils.action_ensure_channelbag_for_slot(action, slot)
+    return slot
+
+
+def _ensure_armature_slot(arm_obj, action, slot_name=None):
+    """Ensure `arm_obj` has an explicit ActionSlot and channelbag bound on `action`."""
+    if slot_name is not None:
+        return _bind_named_slot(arm_obj, action, slot_name)
+    slots = getattr(action, "slots", None)
+    ad = arm_obj.animation_data or arm_obj.animation_data_create()
+    if slots is None or not hasattr(ad, "action_slot"):
+        return None
+    slot = _resolve_armature_slot(arm_obj, action)
+    if slot is not None:
+        existing_curves = _iter_fcurves(action, slot=slot)
+        matches_arm = slot.name_display in {
+            arm_obj.get("motionforge_slot") if hasattr(arm_obj, "get") else None,
+            arm_obj.name,
+            arm_obj.data.name if arm_obj.data else None,
+            "hero",
+        }
+        has_pose_curves = any(fc.data_path.startswith("pose.bones") for fc in existing_curves)
+        if existing_curves and not has_pose_curves and not matches_arm:
+            slot = None
+    if slot is None:
+        slot = next(
+            (s for s in slots if s.name_display == arm_obj.name and s.target_id_type in ("OBJECT", "UNSPECIFIED")),
+            None,
+        )
+        if slot is None:
+            slot = slots.new(id_type="OBJECT", name=arm_obj.name)
+    ad.action_slot = slot
+    anim_utils.action_ensure_channelbag_for_slot(action, slot)
     return slot
 
 
@@ -299,11 +344,7 @@ def import_clip(arm_obj, clip, action_name, frame_start, keys=None, action=None,
     if arm_obj.animation_data is None:
         arm_obj.animation_data_create()
     arm_obj.animation_data.action = action
-    target_slot = None
-    if slot_name is not None:
-        target_slot = _bind_named_slot(arm_obj, action, slot_name)
-    elif hasattr(arm_obj.animation_data, "action_slot"):
-        arm_obj.animation_data.action_slot = None
+    target_slot = _ensure_armature_slot(arm_obj, action, slot_name=slot_name)
     key_map = keys.get("bones", {}) if keys is not None else None
     moving = moving_loc_bones(clip) if key_map is not None else set()
     for i, frame in enumerate(frames):
@@ -352,11 +393,7 @@ def apply_pose_frame(arm_obj, clip, key=True):
                 f"clip bone '{name}' is not on armature '{arm_obj.name}'"
             )
     if key and arm_obj.animation_data is not None and arm_obj.animation_data.action is not None:
-        ad = arm_obj.animation_data
-        if hasattr(ad, "action_slot") and ad.action_slot is None and getattr(ad.action, "slots", None):
-            slot = _resolve_armature_slot(arm_obj, ad.action)
-            if slot is not None:
-                ad.action_slot = slot
+        _ensure_armature_slot(arm_obj, arm_obj.animation_data.action)
     for bone in clip.get("skeleton", {}).get("bones", []):
         name = bone["name"]
         pose = frame.get(name)

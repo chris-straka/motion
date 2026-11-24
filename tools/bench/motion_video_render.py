@@ -72,7 +72,8 @@ def clear():
 
 def plain_mat(name, rgb, rough=0.9):
     m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
-    m.use_nodes = True
+    if getattr(m, "node_tree", None) is None:
+        m.use_nodes = True
     m.diffuse_color = (*rgb, 1)
     b = next(n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED')
     b.inputs["Base Color"].default_value = (*rgb, 1)
@@ -125,6 +126,18 @@ def pick_armature_slot(arm, act):
     slots = list(getattr(act, "slots", None) or [])
     if not slots:
         return None
+    try:
+        from bpy_extras import anim_utils
+    except ImportError:
+        anim_utils = None
+    if anim_utils is not None:
+        for s in slots:
+            cb = anim_utils.action_get_channelbag_for_slot(act, s)
+            if cb is not None and any(
+                getattr(fc, "data_path", "").startswith("pose.bones")
+                for fc in getattr(cb, "fcurves", None) or []
+            ):
+                return s
     for layer in getattr(act, "layers", None) or []:
         for strip in getattr(layer, "strips", None) or []:
             for cb in getattr(strip, "channelbags", None) or []:
@@ -554,7 +567,8 @@ def light_and_floor(view_dir):
     nt.links.new(chk.outputs["Color"], bsdf.inputs["Base Color"])
     floor.data.materials.append(mat)
     scn.world = scn.world or bpy.data.worlds.new("w")
-    scn.world.use_nodes = True
+    if getattr(scn.world, "node_tree", None) is None:
+        scn.world.use_nodes = True
     bg = next(n for n in scn.world.node_tree.nodes if n.type == 'BACKGROUND')
     bg.inputs["Color"].default_value = (0.55, 0.62, 0.72, 1)
     bg.inputs["Strength"].default_value = 0.9
