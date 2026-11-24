@@ -17,11 +17,27 @@ import unittest
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "..", ".."))
-# $BLENDER, else `blender` on PATH, else the owner's macOS install.
+# $BLENDER, else `blender` on PATH, else the macOS app install.
 BLENDER = (os.environ.get("BLENDER") or shutil.which("blender")
            or "/Applications/Blender.app/Contents/MacOS/Blender")
 CLI = os.path.join(REPO, "rust", "target", "release", "motionforge")
 CLI_DEBUG = os.path.join(REPO, "rust", "target", "debug", "motionforge")
+
+
+def find_cli():
+    env_bin = os.environ.get("MOTIONFORGE_BIN")
+    if env_bin and os.path.isfile(env_bin):
+        return env_bin
+    for candidate in (CLI, CLI_DEBUG):
+        if os.path.isfile(candidate):
+            return candidate
+    target_dir = os.environ.get("CARGO_TARGET_DIR")
+    if target_dir:
+        for profile in ("release", "debug"):
+            candidate = os.path.join(target_dir, profile, "motionforge")
+            if os.path.isfile(candidate):
+                return candidate
+    return shutil.which("motionforge") or CLI
 
 MINI_BVH = """HIERARCHY
 ROOT Hips
@@ -77,7 +93,7 @@ MAP = {
 
 
 def have_prereqs():
-    binary = CLI if os.path.isfile(CLI) else CLI_DEBUG
+    binary = find_cli()
     return os.path.isfile(BLENDER) and os.path.isfile(binary)
 
 
@@ -121,7 +137,7 @@ class TestBatch(unittest.TestCase):
 
             clip_path = os.path.join(out_dir, "mini.json")
             self.assertTrue(os.path.isfile(clip_path))
-            binary = CLI if os.path.isfile(CLI) else CLI_DEBUG
+            binary = find_cli()
             info = subprocess.run(
                 [binary, "clip-info", "--input", clip_path],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=60)

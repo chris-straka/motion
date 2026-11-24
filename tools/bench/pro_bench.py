@@ -97,7 +97,18 @@ _GLB_CHUNK_BIN = 0x004E4942
 
 
 def _cli():
-    return os.environ.get("MOTIONFORGE_BIN") or CLI
+    env_bin = os.environ.get("MOTIONFORGE_BIN")
+    if env_bin:
+        return env_bin
+    if os.path.isfile(CLI):
+        return CLI
+    target_dir = os.environ.get("CARGO_TARGET_DIR")
+    if target_dir:
+        for profile in ("release", "debug"):
+            cand = os.path.join(target_dir, profile, "motionforge")
+            if os.path.isfile(cand):
+                return cand
+    return shutil.which("motionforge") or CLI
 
 
 def _parse_lib_specs(specs):
