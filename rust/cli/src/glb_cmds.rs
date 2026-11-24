@@ -345,6 +345,9 @@ pub fn cmd_grip(cmd: &Cmd) -> CmdResult {
         ));
     }
     let verts = motion_core::contact::skinned_rest(&doc, &rig).map_err(|e| (3, e))?;
+    if verts.is_empty() {
+        return Err((1, "mesh has no skinned vertices".into()));
+    }
     let height = verts.iter().map(|v| v.p.y).fold(f64::MIN, f64::max)
         - verts.iter().map(|v| v.p.y).fold(f64::MAX, f64::min);
     let ranked = grip_search(
@@ -384,7 +387,9 @@ pub fn cmd_grip(cmd: &Cmd) -> CmdResult {
         worst.0.x, worst.0.y, worst.0.z, worst.1
     ));
     if let Some(out) = cmd.get("output") {
-        let best = ranked[0].0;
+        let Some(&(best, _, _)) = ranked.first() else {
+            return Err((1, "no candidates scored".into()));
+        };
         let mut doc = doc.clone();
         let hw = rig.rest_world[hand];
         let hdir = (hw.apply_linear(motion_core::math::Vec3::new(0.0, 1.0, 0.0))).normalized();
@@ -399,7 +404,9 @@ pub fn cmd_grip(cmd: &Cmd) -> CmdResult {
                 .conj()
                 .mul(motion_core::math::Quat::from_mat3(m)),
         );
-        let node = &mut doc.array_mut("nodes")[socket];
+        let Some(node) = doc.array_mut("nodes").get_mut(socket) else {
+            return Err((3, "socket node missing".into()));
+        };
         let (t, _, sc) = motion_core::glb::node_trs(node);
         motion_core::glb::set_node_trs(node, t, local, sc);
         save(&doc, out)?;
@@ -849,13 +856,18 @@ fn read_at_camera(
     let anims = Animation::load_all(doc).map_err(|e| (3, e))?;
     // Neutral: each clip's own first frame, or `--neutral <clip>`'s.
     let neutral = match cmd.get("neutral") {
-        Some(want) => Some(
-            anims
+        Some(want) => {
+            let anim = anims
                 .iter()
                 .find(|a| a.name == want)
-                .map(|a| sample(&subject.rig, a, fps).1.swap_remove(0))
-                .ok_or((2, format!("no clip named '{}' for --neutral", want)))?,
-        ),
+                .ok_or((2, format!("no clip named '{}' for --neutral", want)))?;
+            let frame0 = sample(&subject.rig, anim, fps)
+                .1
+                .into_iter()
+                .next()
+                .ok_or((1, format!("--neutral clip '{}' has no frames", want)))?;
+            Some(frame0)
+        }
         None => None,
     };
     let dir = cmd.get("silhouettes");
@@ -1057,7 +1069,10 @@ pub fn cmd_attack(cmd: &Cmd) -> CmdResult {
     for p in cmd.all("preset").iter().flat_map(|p| p.split(',')) {
         let p = p.trim();
         if p == "all" {
-            specs.extend(PRESETS.iter().map(|n| preset(n).unwrap().to_string()));
+            for n in PRESETS {
+                let spec = preset(n).ok_or((3, format!("internal preset '{}' missing", n)))?;
+                specs.push(spec.to_string());
+            }
         } else if !p.is_empty() {
             specs.push(
                 preset(p)

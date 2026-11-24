@@ -869,11 +869,17 @@ fn prune_joints(doc: &Document, rig: &Rig, pruned: &[usize]) -> Result<Document,
                 let nja = out.push_joints_accessor(&joints_rows);
                 let nwa = out.push_float_accessor(&weight_rows, "VEC4", false);
                 let meshes = out.array_mut("meshes");
-                let prim = &mut meshes[mesh]
-                    .get_mut("primitives")
+                let Some(prim) = meshes
+                    .get_mut(mesh)
+                    .and_then(|m| m.get_mut("primitives"))
                     .and_then(Json::as_arr_mut)
-                    .unwrap()[pi];
-                let attrs = prim.get_mut("attributes").unwrap();
+                    .and_then(|ps| ps.get_mut(pi))
+                else {
+                    continue;
+                };
+                let Some(attrs) = prim.get_mut("attributes") else {
+                    continue;
+                };
                 attrs.set("JOINTS_0", Json::num(nja as f64));
                 attrs.set("WEIGHTS_0", Json::num(nwa as f64));
             }

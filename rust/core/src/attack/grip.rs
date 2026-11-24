@@ -144,7 +144,9 @@ pub fn single_chain(info: &RigInfo, s: usize) -> Option<Vec<usize>> {
         }
         let mut ch = vec![c];
         while ch.len() < 3 {
-            let cur = *ch.last().unwrap();
+            let Some(&cur) = ch.last() else {
+                break;
+            };
             let kids: Vec<usize> = info.rig.children[cur]
                 .iter()
                 .copied()
@@ -278,7 +280,8 @@ pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
     let hand_head = rig.head(info.hand[s]);
     let palm_vec = rig.head(mid[0]) - hand_head;
     let palm_len = palm_vec.length();
-    let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
+    let tip_joint = mid.last().copied().unwrap_or(mid[0]);
+    let finger_len = (rig.head(tip_joint) - rig.head(mid[0])).length();
     let distal_mitten = is_distal_mitten(palm_len, finger_len);
     let (base, palm_offset) = if distal_mitten {
         (
@@ -309,7 +312,8 @@ pub fn palm_hold(info: &RigInfo, s: usize, unit: f64) -> Option<PalmHold> {
 /// adding the socket when missing. Hands without finger bones are left as
 /// they are. Mocap sword clips (Mixamo's) are made for a fist round a
 /// handle there: a socket elsewhere points the blade where the clip did
-/// not mean it (the game's Quirin clips held the blade along the forearm).
+/// not mean it (clips authored for palm grips held the blade along the
+/// forearm when sockets sat elsewhere).
 /// Returns the sockets placed.
 pub fn place_sockets(doc: &mut Document) -> Result<Vec<String>, String> {
     let info = RigInfo::new(doc)?;
@@ -381,7 +385,8 @@ pub fn fingers(
         if let Some((fd, palm, kn)) = single_finger_axes(rig, &mid, s == 1, info.fwd) {
             let curl_axis = fd.cross(palm).normalized();
             let palm_len = (rig.head(mid[0]) - rig.head(info.hand[s])).length();
-            let finger_len = (rig.head(*mid.last().unwrap()) - rig.head(mid[0])).length();
+            let tip_joint = mid.last().copied().unwrap_or(mid[0]);
+            let finger_len = (rig.head(tip_joint) - rig.head(mid[0])).length();
             let distal_mitten = is_distal_mitten(palm_len, finger_len);
             let cap = if distal_mitten {
                 DISTAL_MITTEN_CURL

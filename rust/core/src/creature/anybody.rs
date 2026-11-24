@@ -83,7 +83,9 @@ impl Body {
         }
         let up = Vec3::new(0.0, 0.0, 1.0);
         let ahead = |limb: &Vec<usize>| {
-            let tip = c.skeleton.bones[*limb.last().unwrap()].tail;
+            let tip = limb.last().map_or(c.skeleton.bones[limb[0]].tail, |&t| {
+                c.skeleton.bones[t].tail
+            });
             let b = &c.skeleton.bones[limb[0]];
             let at = b.parent.map_or(b.head, |p| c.skeleton.bones[p].head);
             tip.dot(c.forward) + 0.5 * at.dot(up)
@@ -174,12 +176,14 @@ pub fn read(c: &Creature) -> Body {
                 break;
             }
             let least = kids.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
-            let next = kids
+            let Some(next) = kids
                 .iter()
                 .copied()
                 .filter(|&k| off(k) <= least + 0.03 * size)
                 .max_by(|a, b| reach(*a, dir).total_cmp(&reach(*b, dir)).then(b.cmp(a)))
-                .unwrap();
+            else {
+                break;
+            };
             out.push(next);
             cur = next;
         }
@@ -214,10 +218,12 @@ pub fn read(c: &Creature) -> Body {
                 continue;
             }
             let ch = centre_chain(k, back_dir, &front);
-            let tip = c.skeleton.bones[*ch.last().unwrap()].tail.dot(back_dir);
-            if tip > base + 0.05 * size && tip > best {
-                best = tip;
-                back = ch;
+            if let Some(&tip_idx) = ch.last() {
+                let tip = c.skeleton.bones[tip_idx].tail.dot(back_dir);
+                if tip > base + 0.05 * size && tip > best {
+                    best = tip;
+                    back = ch;
+                }
             }
         }
     }
@@ -286,8 +292,7 @@ pub fn idle(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
         let t = f as f64 / frames as f64;
         let s1 = detmath::sin(TAU * t);
         let mut p = Poser::new(c);
-        if !front.is_empty() {
-            let (head, rest) = front.split_last().unwrap();
+        if let Some((head, rest)) = front.split_last() {
             if !rest.is_empty() {
                 p.pitch_chain(rest, 3.0 * s1);
             }
@@ -350,8 +355,7 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
         let rear = smooth(t / 0.35) * (1.0 - smooth((t - 0.35) / 0.15));
         let strike = smooth((t - 0.35) / 0.15) * (1.0 - smooth((t - 0.55) / 0.45));
         let mut p = Poser::new(c);
-        if !front.is_empty() {
-            let (head, rest) = front.split_last().unwrap();
+        if let Some((head, rest)) = front.split_last() {
             if !rest.is_empty() {
                 p.pitch_chain(rest, 18.0 * rear - 32.0 * strike);
             }
@@ -369,7 +373,8 @@ pub fn attack(c: &Creature, body: &Body, frames: usize, fps: f64) -> Clip {
         let strike_late = smooth((t - 0.45) / 0.15) * (1.0 - smooth((t - 0.65) / 0.35));
         for (k, arm) in strikers.iter().enumerate() {
             let top = arm[0];
-            let tip = c.skeleton.bones[*arm.last().unwrap()].tail;
+            let tip_idx = arm.last().copied().unwrap_or(top);
+            let tip = c.skeleton.bones[tip_idx].tail;
             let reach = (tip - c.skeleton.bones[top].head).normalized();
             let sideways = reach.dot(left).abs() > 0.55;
             let (gain, s) = if k == 0 || sideways {
@@ -432,7 +437,10 @@ pub fn sweep(c: &Creature, body: &Body, frames_each: usize, fps: f64) -> Clip {
     limbs.sort_by_key(|l| l[0]);
     let mut out = Vec::with_capacity(frames_each * limbs.len().max(1));
     for limb in &limbs {
-        let tip = c.skeleton.bones[*limb.last().unwrap()].tail;
+        let Some(&tip_idx) = limb.last() else {
+            continue;
+        };
+        let tip = c.skeleton.bones[tip_idx].tail;
         let outward = if tip.dot(left) >= mid {
             left
         } else {
@@ -636,9 +644,11 @@ fn walk_biped(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
     }
     // Order deterministically: left leg first, right leg second.
     legs.sort_by(|a, b| {
-        let sa = c.skeleton.bones[*a.last().unwrap()].tail.dot(left);
-        let sb = c.skeleton.bones[*b.last().unwrap()].tail.dot(left);
-        sb.total_cmp(&sa).then(a[0].cmp(&b[0]))
+        let tip_dot = |ch: &Vec<usize>| {
+            ch.last()
+                .map_or(0.0, |&t| c.skeleton.bones[t].tail.dot(left))
+        };
+        tip_dot(b).total_cmp(&tip_dot(a)).then(a[0].cmp(&b[0]))
     });
     let rigs: Vec<LegRig> = legs
         .iter()
@@ -710,8 +720,7 @@ fn walk_biped(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
         let mut p = Poser::new(c);
         let step_cos = detmath::cos(TAU * t);
         let bob_cos = detmath::cos(2.0 * TAU * (t - phase_shift));
-        if !free_front.is_empty() {
-            let (head, rest) = free_front.split_last().unwrap();
+        if let Some((head, rest)) = free_front.split_last() {
             if !rest.is_empty() {
                 p.yaw_chain(rest, 6.0 * step_cos);
                 p.pitch_chain(rest, 2.0 * bob_cos);
@@ -726,9 +735,9 @@ fn walk_biped(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
         // Free arms counter-swing in opposite phase to their ipsilateral leg.
         for arm in &body.arms {
             let top = arm[0];
+            let tip = arm.last().copied().unwrap_or(top);
             let arm_side = 0.5
-                * (c.skeleton.bones[top].head.dot(left)
-                    + c.skeleton.bones[*arm.last().unwrap()].tail.dot(left))
+                * (c.skeleton.bones[top].head.dot(left) + c.skeleton.bones[tip].tail.dot(left))
                 - legs_mid;
             let leg_off = if arm_side >= 0.0 {
                 offsets[0]
@@ -791,11 +800,9 @@ fn walk_legless(c: &Creature, body: &Body, fps: f64) -> Result<Stride, String> {
                 chain.push(b);
             }
         }
-    } else if !body.front.is_empty() {
-        let first_fwd = c.skeleton.bones[body.front[0]].head.dot(c.forward);
-        let last_fwd = c.skeleton.bones[*body.front.last().unwrap()]
-            .tail
-            .dot(c.forward);
+    } else if let (Some(&first), Some(&last)) = (body.front.first(), body.front.last()) {
+        let first_fwd = c.skeleton.bones[first].head.dot(c.forward);
+        let last_fwd = c.skeleton.bones[last].tail.dot(c.forward);
         if first_fwd > last_fwd + 1e-6 {
             chain.extend_from_slice(&body.front);
         } else {

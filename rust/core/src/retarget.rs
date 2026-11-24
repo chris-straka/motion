@@ -519,12 +519,14 @@ pub fn retarget(
     let slide_after = measure_slide(target, &out, &feet_target);
 
     // Motion proof: root travel (path length) + max joint swing.
-    let root_idx = target.index(&map.root_target).unwrap();
-    let root_pts: Vec<Vec3> = out
-        .frames
-        .iter()
-        .map(|fr| fk(target, fr)[root_idx].head)
-        .collect();
+    let root_pts: Vec<Vec3> = if let Some(root_idx) = target.index(&map.root_target) {
+        out.frames
+            .iter()
+            .map(|fr| fk(target, fr)[root_idx].head)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let mut root_travel = 0.0;
     for w in root_pts.windows(2) {
         root_travel += (w[1] - w[0]).length();

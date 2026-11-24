@@ -446,7 +446,9 @@ pub fn map_rig(rig: &Rig) -> Mapping {
         }
         let mut chain = vec![roots[0]];
         while chain.len() < 4 {
-            let cur = *chain.last().unwrap();
+            let Some(&cur) = chain.last() else {
+                break;
+            };
             let next: Vec<usize> = rig.children[cur]
                 .iter()
                 .copied()

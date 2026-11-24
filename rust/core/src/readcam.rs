@@ -19,9 +19,8 @@
 //!   strike's key pose reads from where it began.
 //! - **Body change**: the same against the neutral body alone (no
 //!   blade), from the windup's start to the settle: whether the body
-//!   takes part or only a thin blade moves (the owner could not read
-//!   HLH's attack_1, where only the arm and blade move). The score uses
-//!   this one.
+//!   takes part or only a thin blade moves (a strike where only the arm
+//!   and blade move reads poorly). The score uses this one.
 //! - **Sweep**: the screen area the blade covers over the strike (union of
 //!   its masks), over the neutral body's own area.
 //! - **Arc**: the blade tip's screen path over the strike, in neutral body
@@ -68,11 +67,11 @@ use crate::rig::{Rig, Trs};
 /// A frame whose silhouette changed less than this (1 - IoU with the
 /// frame before) is held still.
 pub const STILL_SHARE: f64 = 0.04;
-/// Head joint height over stature: Andras is 2 m with his head joint at
-/// 1.6836 m (HLH `character.rs`, `RigRest::stature`).
+/// Head joint height over stature: a 2.0 m reference hero has its head joint
+/// at 1.6836 m.
 pub const HEAD_SHARE: f64 = 1.6836 / 2.0;
-/// HLH's `tracks::held_pose` (Bevy, in the hand socket's space): the
-/// blade's rotation (x, y, z, w) and the grip's middle.
+/// Default weapon hold in the hand socket's space: the blade's rotation
+/// (x, y, z, w) and the grip's middle.
 pub const HELD_ROT: [f64; 4] = [0.30965, -0.67445, 0.00552, 0.67023];
 pub const HELD_GRIP: [f64; 3] = [0.0, 0.0428, -0.0850];
 
@@ -85,12 +84,10 @@ pub enum BladePose {
     Socket,
 }
 
-/// The camera and the blade. Defaults are HLH's follow camera in a
-/// source level (`bevy/src/fx.rs` `camera_follow`, recorded by the game in
-/// `proportions.rs`): focus 0.535 m above the body's centre, itself 1.0 m
-/// above the feet; 3.0 m back at pitch -0.32 rad; 75 deg vertical field of
-/// view; straight behind him. Masks are 480x270 (the game's 1280x720 at
-/// three eighths).
+/// The camera and the blade. Defaults match a third-person follow camera:
+/// focus 0.535 m above the body's centre, itself 1.0 m above the feet;
+/// 3.0 m back at pitch -0.32 rad; 75 deg vertical field of view; straight
+/// behind the character. Masks are 480x270 (1280x720 at three eighths).
 #[derive(Clone, Debug)]
 pub struct CamOptions {
     pub focus_m: f64,
@@ -720,8 +717,8 @@ pub fn grip_frame(palm: Vec3, grip: Vec3, dir: Vec3, chains: &[Vec<Vec3>]) -> (f
 
 /// A finger joint's turn from its rest pose, degrees: its rotation
 /// relative to its parent now, against the same at rest. Joint
-/// positions cannot say this (a rig may rest with curved fingers --
-/// Lysan's rest hand already bends 44 deg joint to joint, so an open
+/// positions cannot say this (a rig may rest with curved fingers -- an
+/// authored rest hand can already bend 44 deg joint to joint, so an open
 /// authored hand and a closed one read the same by position), the
 /// joint's own turn can: a hand the clip never closes turns 0.
 pub fn joint_turn_deg(
@@ -851,7 +848,7 @@ pub fn score_of(body: f64, sweep: f64, arc: f64, hold: usize) -> f64 {
 }
 
 /// What a clearly readable attack reaches in each part (calibrated on
-/// HLH's attacks against its idle: `docs/motion-check.md`).
+/// reference attacks against idle: `docs/motion-check.md`).
 pub const READ_FULL: [f64; 4] = [0.7, 0.8, 2.0, 4.0];
 
 impl ReadCam {
@@ -1112,14 +1109,18 @@ impl Stage {
                             .node_of(&format!("DEF-{}.{:02}.{}", finger, seg, side))
                     })
                     .collect();
-                if chain.len() >= 2 {
-                    let m = is_mitten(chain[0], *chain.last().unwrap());
-                    palm_roots.push((chain[0], root_share(m)));
-                    mitten_roots.push(m);
-                    let mut full = vec![h];
-                    full.extend(chain);
-                    finger_chains.push(full);
-                } else if let Some(&root) = chain.first() {
+                if let Some(&tip) = chain.last() {
+                    if chain.len() >= 2 {
+                        let m = is_mitten(chain[0], tip);
+                        palm_roots.push((chain[0], root_share(m)));
+                        mitten_roots.push(m);
+                        let mut full = vec![h];
+                        full.extend(chain);
+                        finger_chains.push(full);
+                        continue;
+                    }
+                }
+                if let Some(&root) = chain.first() {
                     palm_roots.push((root, 1.0));
                     mitten_roots.push(false);
                 }
@@ -1150,10 +1151,12 @@ impl Stage {
                         }
                     }
                     if chain.len() >= 3 {
-                        let m = is_mitten(c, *chain.last().unwrap());
-                        palm_roots.push((c, root_share(m)));
-                        mitten_roots.push(m);
-                        finger_chains.push(chain);
+                        if let Some(&tip) = chain.last() {
+                            let m = is_mitten(c, tip);
+                            palm_roots.push((c, root_share(m)));
+                            mitten_roots.push(m);
+                            finger_chains.push(chain);
+                        }
                     }
                 }
             }

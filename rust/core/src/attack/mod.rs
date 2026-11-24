@@ -645,7 +645,9 @@ impl<'a> Solver<'a> {
     /// Where a pose holds the sword: the grip's middle and the blade's
     /// direction, in the world.
     pub fn sword(&self, locals: &[Option<Trs>]) -> (Vec3, Vec3) {
-        let hold = self.hold[self.side].expect("checked in new");
+        let Some(hold) = self.hold[self.side] else {
+            return (Vec3::ZERO, Vec3::new(0.0, 1.0, 0.0));
+        };
         let w = self.info.rig.world(locals);
         let hand = w[self.info.hand[self.side]];
         let rot = hand.rotation();

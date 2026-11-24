@@ -233,15 +233,22 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
                 if e == 0 {
                     continue;
                 }
-                let prev = *keys.iter().filter(|k| **k < e).max().unwrap();
+                let Some(prev) = keys.iter().copied().filter(|k| *k < e).max() else {
+                    report.counters_skipped += 1;
+                    continue;
+                };
                 let at = e as isize - params.anticipation_frames as isize;
                 if at <= prev as isize {
                     report.counters_skipped += 1;
                     continue;
                 }
                 let at = at as usize;
-                let prev_pose = key_pose[b][prev].clone().unwrap();
-                let ext_pose = key_pose[b][e].clone().unwrap();
+                let (Some(prev_pose), Some(ext_pose)) =
+                    (key_pose[b][prev].as_ref(), key_pose[b][e].as_ref())
+                else {
+                    report.counters_skipped += 1;
+                    continue;
+                };
                 key_pose[b][at] = Some(Pose {
                     loc: clip.frames[at].poses[b].loc,
                     quat: prev_pose.quat.slerp(ext_pose.quat, -params.anticipation),
@@ -273,12 +280,16 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
                     break;
                 }
             }
-            let p0 = key_pose[b][k0].clone().unwrap();
+            let q0 = key_pose[b][k0]
+                .as_ref()
+                .map_or(clip.frames[k0].poses[b].quat, |p| p.quat);
             if k0 == k1 {
-                poses.push(Pose { loc, quat: p0.quat });
+                poses.push(Pose { loc, quat: q0 });
                 continue;
             }
-            let p1 = key_pose[b][k1].clone().unwrap();
+            let q1 = key_pose[b][k1]
+                .as_ref()
+                .map_or(clip.frames[k1].poses[b].quat, |p| p.quat);
             let span = (k1 - k0) as f64;
             let held = params.hold.min(k1 - k0) as f64;
             let e = if (f - k0) as f64 <= held || span - held <= 0.0 {
@@ -289,7 +300,7 @@ pub fn stylize(clip: &Clip, params: &StylizeParams) -> Result<(Clip, StylizeRepo
             };
             poses.push(Pose {
                 loc,
-                quat: p0.quat.slerp(p1.quat, e),
+                quat: q0.slerp(q1, e),
             });
         }
         out_frames.push(Frame { poses });

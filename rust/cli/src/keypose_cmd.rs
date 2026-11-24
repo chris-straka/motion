@@ -332,7 +332,9 @@ pub fn cmd_keypose(cmd: &Cmd) -> CmdResult {
             best = Some((c, frames, trep));
         }
     }
-    let (carry, frames, trep) = best.expect("at least one carry");
+    let Some((carry, frames, trep)) = best else {
+        return Err((3, "no pose candidate scored".into()));
+    };
 
     // Write: every mapped bone and helper, the hips' translation.
     let mut nodes: Vec<usize> = info.map.pairs.iter().map(|(n, _)| *n).collect();

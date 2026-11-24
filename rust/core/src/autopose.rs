@@ -180,11 +180,13 @@ pub fn parse_weights(text: &str) -> Result<Weights, String> {
             ));
         }
     }
-    if layers.last().unwrap().rows != 4 * n {
+    let Some(last) = layers.last() else {
+        return Err("weights: no layers".into());
+    };
+    if last.rows != 4 * n {
         return Err(format!(
             "weights: output dim {} != 4 * {} bones",
-            layers.last().unwrap().rows,
-            n
+            last.rows, n
         ));
     }
     Ok(Weights {

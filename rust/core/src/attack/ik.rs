@@ -1,7 +1,6 @@
-//! Two-bone IK on plain points: the game's solver (`hlh/bevy/src/ik/solve.rs`
-//! `two_bone`, `soft_reach`) mirrored here in f64 with `detmath`, so an
-//! authored pose is solved the way the game will solve reaches on top of
-//! it. The limb bends in the plane of its root, the target and a pole; the
+//! Two-bone IK on plain points: mirrors a two-bone soft-reach runtime IK
+//! solver in f64 with `detmath`, so an authored pose is solved the way the
+//! engine solves reaches on top of it. The limb bends in the plane of its root, the target and a pole; the
 //! middle joint points toward the pole.
 //!
 //! [`set_limb`] turns the answer into bone rotations as a true hinge: the

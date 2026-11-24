@@ -484,9 +484,9 @@ pub fn fuse(lms: &Landmarks, params: &FuseParams) -> Fused {
             sm.d = rot_y(base.d, turn);
         }
         let views: Vec<(&Figure, ViewMap)> = ff
-            .map(|(_, f)| (f, fmap.unwrap()))
+            .and_then(|(_, f)| fmap.map(|m| (f, m)))
             .into_iter()
-            .chain(side_fig.as_ref().map(|f| (f, smap.unwrap())))
+            .chain(side_fig.as_ref().zip(smap))
             .collect();
         let monos: Vec<Vec<Vec3>> = views.iter().map(|(f, m)| mono(f, m)).collect();
         let wd = params.depth_weight * params.depth_weight;

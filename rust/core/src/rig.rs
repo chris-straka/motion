@@ -252,7 +252,9 @@ impl Animation {
                         name
                     ));
                 }
-                duration = duration.max(*times.last().unwrap());
+                if let Some(&last_t) = times.last() {
+                    duration = duration.max(last_t);
+                }
                 channels.push(Channel {
                     node,
                     path,

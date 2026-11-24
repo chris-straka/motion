@@ -71,6 +71,9 @@ impl Document {
         }
         let text = json_text.ok_or("GLB has no JSON chunk")?;
         let json = json::parse(&text).map_err(|e| format!("GLB JSON: {}", e))?;
+        if !matches!(json, Json::Obj(_)) {
+            return Err("GLB JSON root must be an object".into());
+        }
         if let Some(buffers) = json.get("buffers").and_then(Json::as_arr) {
             if buffers.len() > 1 || buffers.iter().any(|b| b.get("uri").is_some()) {
                 return Err("only GLBs with one embedded buffer are supported".into());
@@ -922,5 +925,19 @@ mod tests {
         doc.array_mut("bufferViews")[0].set("byteStride", Json::num(9_223_372_036_854_775_808.0));
         doc.array_mut("accessors")[0].set("count", Json::num(3.0));
         assert!(doc.read_accessor(0).is_err());
+    }
+
+    #[test]
+    fn rejects_non_object_json_root() {
+        let json_bytes = b"[]  ";
+        let mut glb = Vec::new();
+        glb.extend_from_slice(&0x4654_6C67u32.to_le_bytes());
+        glb.extend_from_slice(&2u32.to_le_bytes());
+        glb.extend_from_slice(&((12 + 8 + json_bytes.len()) as u32).to_le_bytes());
+        glb.extend_from_slice(&(json_bytes.len() as u32).to_le_bytes());
+        glb.extend_from_slice(&CHUNK_JSON.to_le_bytes());
+        glb.extend_from_slice(json_bytes);
+        let err = Document::parse(&glb).unwrap_err();
+        assert!(err.contains("object"), "{err}");
     }
 }

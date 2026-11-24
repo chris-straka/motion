@@ -156,7 +156,9 @@ fn expand(bone: &str, map: &Mapping) -> Vec<(String, bool)> {
 /// Rest direction of a bone: toward its main child, else its parent's.
 fn bone_dir(rig: &Rig, map: &Mapping, name: &str, up: Vec3, fwd: Vec3) -> Vec3 {
     let child = humanoid::main_children(name);
-    let node = map.node_of(name).unwrap();
+    let Some(node) = map.node_of(name) else {
+        return up;
+    };
     for c in child {
         if let Some(cn) = map.node_of(&c) {
             let d = rig.head(cn) - rig.head(node);
@@ -172,8 +174,9 @@ fn bone_dir(rig: &Rig, map: &Mapping, name: &str, up: Vec3, fwd: Vec3) -> Vec3 {
         return fwd;
     }
     // Parent chain direction (hand tips, toes, finger ends).
-    if let Some(p) = humanoid::present_parent(name, &|n| map.node_of(n).is_some()) {
-        let pn = map.node_of(&p).unwrap();
+    if let Some(pn) =
+        humanoid::present_parent(name, &|n| map.node_of(n).is_some()).and_then(|p| map.node_of(&p))
+    {
         let d = rig.head(node) - rig.head(pn);
         if d.length() > 1e-6 {
             return d.normalized();
@@ -210,7 +213,9 @@ fn pose_locals_with(
             1.0
         };
         for (name, right) in targets {
-            let node = map.node_of(&name).unwrap();
+            let Some(node) = map.node_of(&name) else {
+                continue;
+            };
             let dir = bone_dir(rig, map, &name, up, fwd);
             let out = if right { left.scale(-1.0) } else { left };
             let (axis, deg) = match motion {

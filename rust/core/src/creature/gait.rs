@@ -181,11 +181,16 @@ pub fn parts(c: &Creature) -> Result<Parts, String> {
             .filter(|k| !taken.contains(k))
             .map(|k| chain_toward(c, k, dir, &taken))
             .filter(|ch| {
-                let tip = &c.skeleton.bones[*ch.last().unwrap()];
-                tip.tail.dot(dir) > base + 0.02 * c.height
+                ch.last().is_some_and(|&tip| {
+                    c.skeleton.bones[tip].tail.dot(dir) > base + 0.02 * c.height
+                })
             })
             .max_by(|a, b| {
-                let reach = |ch: &Vec<usize>| c.skeleton.bones[*ch.last().unwrap()].tail.dot(dir);
+                let reach = |ch: &Vec<usize>| {
+                    ch.last().map_or(f64::NEG_INFINITY, |&tip| {
+                        c.skeleton.bones[tip].tail.dot(dir)
+                    })
+                };
                 reach(a).total_cmp(&reach(b)).then(b[0].cmp(&a[0]))
             })
             .unwrap_or_default()

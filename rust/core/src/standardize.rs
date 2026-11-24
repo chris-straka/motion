@@ -293,7 +293,9 @@ fn humanoid_standardize(doc: &Document, rig: &Rig) -> Result<Outcome, String> {
     // (or with different mesh transforms) have different inverse bind
     // matrices for the same joint, and one shared table (the first skin's)
     // moved the other mesh off its bones.
-    let hips = map.node_of("DEF-spine").expect("required");
+    let hips = map
+        .node_of("DEF-spine")
+        .ok_or("standardize: DEF-spine missing after keep")?;
     let joint_json = Json::Arr(new_joints.iter().map(|&j| Json::num(j as f64)).collect());
     let skin_count = rig.skins.len();
     let mut tables: Vec<(Vec<Vec<f64>>, usize)> = Vec::new();
@@ -316,7 +318,7 @@ fn humanoid_standardize(doc: &Document, rig: &Rig) -> Result<Outcome, String> {
         skin.set("inverseBindMatrices", Json::num(ibm as f64));
         skin.set("skeleton", Json::num(hips as f64));
     }
-    let index_of = |node: usize| new_joints.iter().position(|&k| k == node).expect("kept") as u16;
+    let index_of = |node: usize| new_joints.iter().position(|&k| k == node).unwrap_or(0) as u16;
     let mut done: Vec<(usize, usize, usize)> = Vec::new(); // (mesh, prim, skin)
     let node_list: Vec<Json> = doc.array("nodes").to_vec();
     for node in &node_list {
@@ -349,11 +351,13 @@ fn humanoid_standardize(doc: &Document, rig: &Rig) -> Result<Outcome, String> {
                 continue;
             }
             done.push((mesh, pi, skin));
-            let attrs = doc.array("meshes")[mesh]
-                .get("primitives")
+            let attrs = doc
+                .array("meshes")
+                .get(mesh)
+                .and_then(|m| m.get("primitives"))
                 .and_then(Json::as_arr)
-                .unwrap()[pi]
-                .get("attributes")
+                .and_then(|ps| ps.get(pi))
+                .and_then(|p| p.get("attributes"))
                 .cloned()
                 .unwrap_or(Json::Obj(Vec::new()));
             let mut sets = Vec::new();
@@ -417,10 +421,12 @@ fn humanoid_standardize(doc: &Document, rig: &Rig) -> Result<Outcome, String> {
             let ja = out.push_joints_accessor(&joints_rows);
             let wa = out.push_float_accessor(&weight_rows, "VEC4", false);
             let meshes = out.array_mut("meshes");
-            let prim = &mut meshes[mesh]
-                .get_mut("primitives")
+            let prim = meshes
+                .get_mut(mesh)
+                .and_then(|m| m.get_mut("primitives"))
                 .and_then(Json::as_arr_mut)
-                .unwrap()[pi];
+                .and_then(|ps| ps.get_mut(pi))
+                .ok_or("primitive missing while writing standardized skin weights")?;
             let attrs = prim
                 .get_mut("attributes")
                 .ok_or("primitive without attributes")?;

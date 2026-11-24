@@ -264,10 +264,12 @@ fn smooth_points(points: &mut [Vec<Point>], sigma: f64) {
             if points[f][j].conf > 0.0 {
                 continue;
             }
-            let nearest = *valid
+            let Some(&nearest) = valid
                 .iter()
                 .min_by_key(|&&v| ((v as i64 - f as i64).abs(), v))
-                .unwrap();
+            else {
+                continue;
+            };
             points[f][j] = Point {
                 p: points[nearest][j].p,
                 conf: 0.2 * points[nearest][j].conf,

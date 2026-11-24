@@ -774,14 +774,13 @@ pub fn align_time(
         _ => "no lag lowers the motion ratio".into(),
     };
     rep.used = choose.into();
-    match choose {
-        "warp" => {
-            let (dd, first, _) = warp.expect("warp chosen only when it ran");
+    match (choose, warp) {
+        ("warp", Some((dd, first, _))) => {
             rep.frames_kept = dd.frames.len();
             rep.first_frame = first;
             Ok((dd, rep))
         }
-        "lag" => {
+        ("lag", _) => {
             let (dd, first) = resample_pair(d, bv, &lag_times(n, lag));
             rep.frames_kept = dd.frames.len();
             rep.first_frame = first;
