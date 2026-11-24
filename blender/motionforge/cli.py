@@ -17,18 +17,27 @@ class CliError(Exception):
 
 
 def find_motionforge_binary(explicit_path=""):
-    """Locate the `motionforge` CLI: explicit preference, PATH, then the
-    build tree relative to this extension."""
-    if explicit_path and os.path.isfile(explicit_path) and os.access(explicit_path, os.X_OK):
-        return explicit_path
+    """Locate the `motionforge` CLI: explicit preference, $MOTIONFORGE_BIN,
+    PATH, $CARGO_TARGET_DIR, then the build tree relative to this extension."""
+    env_bin = os.environ.get("MOTIONFORGE_BIN", "")
+    for cand in (explicit_path, env_bin):
+        if cand and os.path.isfile(cand) and os.access(cand, os.X_OK):
+            return cand
     on_path = shutil.which("motionforge")
     if on_path:
         return on_path
     here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (
+    candidates = [
         os.path.join(here, "..", "..", "rust", "target", "release", "motionforge"),
         os.path.join(here, "..", "..", "rust", "target", "debug", "motionforge"),
-    ):
+    ]
+    target_dir = os.environ.get("CARGO_TARGET_DIR", "")
+    if target_dir:
+        candidates.extend([
+            os.path.join(target_dir, "release", "motionforge"),
+            os.path.join(target_dir, "debug", "motionforge"),
+        ])
+    for candidate in candidates:
         candidate = os.path.normpath(candidate)
         if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
             return candidate
