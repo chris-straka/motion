@@ -129,28 +129,88 @@ pub fn read(c: &Creature) -> Body {
     let size = ext.x.max(ext.y).max(ext.z).max(1e-6);
     let left = left_of(c);
     let up = Vec3::new(0.0, 0.0, 1.0);
-    let sides: Vec<f64> = c
-        .skeleton
-        .bones
-        .iter()
-        .flat_map(|b| [b.head.dot(left), b.tail.dot(left)])
-        .collect();
-    let mid = (sides.iter().cloned().fold(f64::INFINITY, f64::min)
-        + sides.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
-        * 0.5;
+    let root = c.root();
+    // Anchor the mirror plane at the hierarchy root instead of the global
+    // min/max across all bones: one longer or outstretched arm/wing tip
+    // must not drag the plane away from the pelvis and spine.
+    let mid = c.skeleton.bones[root].head.dot(left);
     // Off the mirror plane, by its head. The centre line is followed by
     // structure, not by a band: at each bone the child nearest the plane
     // goes on (a generated body's spine wanders a few percent sideways;
     // its limbs leave it in pairs, well out).
     let side = |b: usize| c.skeleton.bones[b].head.dot(left) - mid;
     let off = |b: usize| side(b).abs();
-    // A child that has a partner on the other side, about as far out, is
-    // one of a pair (legs, arms, eyes): never the centre line.
-    let paired = |k: usize, among: &[usize]| {
-        off(k) > 0.03 * size
-            && among.iter().any(|&o| {
-                o != k && side(o) * side(k) < 0.0 && (off(o) - off(k)).abs() <= 0.03 * size
-            })
+    let rel_side =
+        |b: usize, cur: usize| (c.skeleton.bones[b].head - c.skeleton.bones[cur].head).dot(left);
+    let sag_dir = |b: usize| {
+        let v = c.skeleton.bones[b].tail - c.skeleton.bones[b].head;
+        (v.dot(c.forward), v.dot(up), v.length())
+    };
+    // A child that has a mirror partner on the other side of its parent
+    // (comparable lateral distance, height, and fore/aft position, not
+    // pointing opposite ways in the sagittal plane) is one of a pair
+    // (legs, arms, eyes): never the centre line.
+    let paired = |k: usize, cur: usize, among: &[usize]| {
+        let sk = rel_side(k, cur);
+        let ak = sk.abs();
+        if ak <= 0.03 * size {
+            return false;
+        }
+        let hk = c.skeleton.bones[k].head;
+        let (kf, ku, klen) = sag_dir(k);
+        let k_sag = (kf * kf + ku * ku).sqrt();
+        among.iter().any(|&o| {
+            if o == k {
+                return false;
+            }
+            let so = rel_side(o, cur);
+            let ao = so.abs();
+            if so * sk >= 0.0 || (ao - ak).abs() > 0.03 * size {
+                return false;
+            }
+            let ho = c.skeleton.bones[o].head;
+            if (hk - ho).dot(up).abs() > 0.12 * size || (hk - ho).dot(c.forward).abs() > 0.12 * size
+            {
+                return false;
+            }
+            let (of, ou, olen) = sag_dir(o);
+            let o_sag = (of * of + ou * ou).sqrt();
+            if k_sag > 0.25 * klen && o_sag > 0.25 * olen && (kf * of + ku * ou) <= 0.0 {
+                return false;
+            }
+            true
+        })
+    };
+    let foot_descendant = |b: usize| -> bool {
+        let mut p = Some(b);
+        while let Some(x) = p {
+            if c.feet.contains(&x) {
+                return true;
+            }
+            p = c.skeleton.bones[x].parent;
+        }
+        false
+    };
+    // A child branch whose subtree terminates solely in a single foot (and
+    // optional toes below it) without climbing above its parent is a leg,
+    // never a spine or tail. (A quadruped's spine holds two front feet and
+    // a head/neck, so it is not a pure leg.)
+    let is_pure_leg = |k: usize, cur: usize| -> bool {
+        let sub = subtree(c, k);
+        let foot_count = sub.iter().filter(|x| c.feet.contains(x)).count();
+        if foot_count != 1 {
+            return false;
+        }
+        let all_leaves_are_foot = sub
+            .iter()
+            .filter(|&&x| children(c, x).is_empty())
+            .all(|&leaf| foot_descendant(leaf));
+        if !all_leaves_are_foot {
+            return false;
+        }
+        let cur_z = c.skeleton.bones[cur].head.z;
+        sub.iter()
+            .all(|&x| c.skeleton.bones[x].head.z <= cur_z + 0.05 * size)
     };
     let band = 0.10 * size;
     let reach = |b: usize, dir: Vec3| -> f64 {
@@ -168,8 +228,10 @@ pub fn read(c: &Creature) -> Body {
             let kids: Vec<usize> = all
                 .iter()
                 .copied()
-                .filter(|k| {
-                    !skip.contains(k) && (all.len() == 1 || (off(*k) <= band && !paired(*k, &all)))
+                .filter(|&k| {
+                    !skip.contains(&k)
+                        && !is_pure_leg(k, cur)
+                        && (all.len() == 1 || (off(k) <= band && !paired(k, cur, &all)))
                 })
                 .collect();
             if kids.is_empty() {
@@ -197,7 +259,6 @@ pub fn read(c: &Creature) -> Body {
             cur = c.skeleton.bones[b].parent;
         }
     }
-    let root = c.root();
     let front_dir = (c.forward + up).normalized();
     let front = centre_chain(root, front_dir, &[]);
     // The tail: the centre branch reaching farthest back from the front
@@ -208,13 +269,19 @@ pub fn read(c: &Creature) -> Body {
     for &from in front.iter().take(front.len().div_ceil(3).max(1)) {
         let base = c.skeleton.bones[from].head.dot(back_dir);
         let all = children(c, from);
-        let least = all.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
-        for k in all.iter().copied() {
-            if front.contains(&k)
-                || off(k) > band
-                || off(k) > least + 0.03 * size
-                || paired(k, &all)
-            {
+        let cands: Vec<usize> = all
+            .iter()
+            .copied()
+            .filter(|&k| {
+                !front.contains(&k)
+                    && !is_pure_leg(k, from)
+                    && off(k) <= band
+                    && !paired(k, from, &all)
+            })
+            .collect();
+        let least = cands.iter().map(|&k| off(k)).fold(f64::INFINITY, f64::min);
+        for k in cands {
+            if off(k) > least + 0.03 * size {
                 continue;
             }
             let ch = centre_chain(k, back_dir, &front);
@@ -1489,5 +1556,151 @@ mod tests {
             );
             assert!(walk_stride(&c, &read(&c), 24.0).is_err());
         }
+    }
+
+    #[test]
+    fn asymmetric_arm_biped_keeps_spine_as_front_and_walks() {
+        let mk = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
+            name: name.into(),
+            parent,
+            head: Vec3::new(h[0], h[1], h[2]),
+            tail: Vec3::new(t[0], t[1], t[2]),
+        };
+        // Forward = -Y, left = +X, Z up. Right arm reaches far sideways
+        // (-0.42) while left arm stays tucked (+0.26), pulling global
+        // min/max midpoint well off the hips (-0.01) and spine (~0.0).
+        let bones = vec![
+            mk("hips", None, [-0.01, 0.08, 0.35], [-0.01, 0.08, 0.36]),
+            mk("spine1", Some(0), [0.00, 0.05, 0.46], [0.00, -0.04, 0.55]),
+            mk("spine2", Some(1), [0.00, -0.04, 0.55], [0.01, -0.14, 0.62]),
+            mk("chest", Some(2), [0.01, -0.14, 0.62], [0.00, -0.21, 0.61]),
+            mk("arm1.L", Some(3), [0.12, -0.20, 0.59], [0.22, -0.16, 0.50]),
+            mk("arm2.L", Some(4), [0.22, -0.16, 0.50], [0.26, -0.20, 0.20]),
+            mk("hand.L", Some(5), [0.26, -0.20, 0.20], [0.24, -0.24, 0.08]),
+            mk(
+                "arm1.R",
+                Some(3),
+                [-0.12, -0.20, 0.61],
+                [-0.26, -0.15, 0.54],
+            ),
+            mk(
+                "arm2.R",
+                Some(7),
+                [-0.26, -0.15, 0.54],
+                [-0.38, -0.17, 0.22],
+            ),
+            mk(
+                "hand.R",
+                Some(8),
+                [-0.38, -0.17, 0.22],
+                [-0.42, -0.22, 0.06],
+            ),
+            mk("tail1", Some(0), [0.00, 0.19, 0.35], [0.01, 0.34, 0.28]),
+            mk("tail2", Some(10), [0.01, 0.34, 0.28], [0.00, 0.50, 0.14]),
+            mk("thigh.L", Some(0), [0.09, 0.03, 0.29], [0.14, 0.04, 0.19]),
+            mk("shin.L", Some(12), [0.14, 0.04, 0.19], [0.16, 0.16, 0.05]),
+            mk("foot.L", Some(13), [0.16, 0.16, 0.05], [0.18, 0.12, 0.00]),
+            mk("thigh.R", Some(0), [-0.11, 0.04, 0.30], [-0.16, 0.05, 0.20]),
+            mk("shin.R", Some(15), [-0.16, 0.05, 0.20], [-0.18, 0.16, 0.04]),
+            mk("foot.R", Some(16), [-0.18, 0.16, 0.04], [-0.20, 0.11, 0.00]),
+        ];
+        let sk = Skeleton { bones };
+        let (lo, hi) = skeleton_bounds(&sk);
+        let c = crate::creature::profile::build(
+            "asym_biped",
+            sk,
+            vec![14, 17],
+            Vec3::new(0.0, -1.0, 0.0),
+            lo,
+            hi,
+            64,
+        );
+        let b = read(&c);
+        let names = |ids: &[usize]| -> Vec<&str> {
+            ids.iter()
+                .map(|&i| c.skeleton.bones[i].name.as_str())
+                .collect()
+        };
+        assert_eq!(names(&b.front), ["hips", "spine1", "spine2", "chest"]);
+        assert_eq!(names(&b.back), ["tail1", "tail2"]);
+        assert_eq!(b.legs.len(), 2, "{:?}", b);
+        assert_eq!(b.arms.len(), 2, "{:?}", b);
+
+        let stride = walk_stride(&c, &b, 24.0).expect("asymmetric biped should walk");
+        assert!(stride.clip.frames.len() >= 16);
+        assert_bone_lengths_preserved(&c, &stride.clip);
+        let atk = attack(&c, &b, 24, 24.0);
+        let most = atk
+            .frames
+            .iter()
+            .flat_map(|fr| fr.poses.iter())
+            .map(|p| turn_deg(p.quat))
+            .fold(0.0, f64::max);
+        assert!(most > 25.0, "expected active attack swing, got {most}");
+    }
+
+    #[test]
+    fn off_center_root_never_lets_foot_leg_hijack_front_chain() {
+        let mk = |name: &str, parent: Option<usize>, h: [f64; 3], t: [f64; 3]| Bone {
+            name: name.into(),
+            parent,
+            head: Vec3::new(h[0], h[1], h[2]),
+            tail: Vec3::new(t[0], t[1], t[2]),
+        };
+        // Root sits off-center (+0.11); one downward leg sits closer to x = 0
+        // than the spine, and the spine leans slightly (+0.04) opposite a
+        // leg (-0.04) relative to hips. Neither may pair nor hijack `front`.
+        let bones = vec![
+            mk("hips", None, [0.11, 0.02, 0.48], [0.11, 0.00, 0.52]),
+            mk("spine1", Some(0), [0.15, 0.00, 0.58], [0.13, -0.06, 0.70]),
+            mk("spine2", Some(1), [0.13, -0.06, 0.70], [0.11, -0.14, 0.80]),
+            mk("chest", Some(2), [0.11, -0.14, 0.80], [0.11, -0.22, 0.86]),
+            mk("arm1.L", Some(3), [0.28, -0.16, 0.80], [0.36, -0.20, 0.52]),
+            mk("arm2.L", Some(4), [0.36, -0.20, 0.52], [0.38, -0.28, 0.24]),
+            mk(
+                "arm1.R",
+                Some(3),
+                [-0.08, -0.16, 0.78],
+                [-0.20, -0.20, 0.50],
+            ),
+            mk(
+                "arm2.R",
+                Some(6),
+                [-0.20, -0.20, 0.50],
+                [-0.26, -0.26, 0.22],
+            ),
+            mk("thigh.L", Some(0), [0.23, 0.02, 0.42], [0.24, 0.08, 0.22]),
+            mk("shin.L", Some(8), [0.24, 0.08, 0.22], [0.24, 0.04, 0.06]),
+            mk("foot.L", Some(9), [0.24, 0.04, 0.06], [0.24, -0.04, 0.00]),
+            mk("thigh.R", Some(0), [0.07, 0.00, 0.38], [0.02, 0.06, 0.20]),
+            mk("shin.R", Some(11), [0.02, 0.06, 0.20], [0.01, 0.04, 0.05]),
+            mk("foot.R", Some(12), [0.01, 0.04, 0.05], [0.01, -0.04, 0.00]),
+        ];
+        let sk = Skeleton { bones };
+        let (lo, hi) = skeleton_bounds(&sk);
+        let c = crate::creature::profile::build(
+            "off_center_biped",
+            sk,
+            vec![10, 13],
+            Vec3::new(0.0, -1.0, 0.0),
+            lo,
+            hi,
+            64,
+        );
+        let b = read(&c);
+        let names = |ids: &[usize]| -> Vec<&str> {
+            ids.iter()
+                .map(|&i| c.skeleton.bones[i].name.as_str())
+                .collect()
+        };
+        assert_eq!(names(&b.front), ["hips", "spine1", "spine2", "chest"]);
+        assert_eq!(b.legs.len(), 2, "{:?}", b);
+        assert_eq!(b.arms.len(), 2, "{:?}", b);
+
+        let stride = walk_stride(&c, &b, 24.0).expect("off-center biped should walk");
+        assert!(stride.clip.frames.len() >= 16);
+        assert_bone_lengths_preserved(&c, &stride.clip);
+        let atk = attack(&c, &b, 24, 24.0);
+        assert_bone_lengths_preserved(&c, &atk);
     }
 }
